@@ -127,6 +127,7 @@ func (a *Agent) register() error {
 		return errors.New("--token is required for first registration")
 	}
 	hostname, _ := os.Hostname()
+	gostVersion := gostVersion()
 	req := map[string]string{
 		"token":        a.cfg.RegisterToken,
 		"name":         a.cfg.NodeName,
@@ -134,8 +135,8 @@ func (a *Agent) register() error {
 		"os":           linuxPrettyName(),
 		"arch":         runtime.GOARCH,
 		"agentVersion": agentVersion,
-		"gostVersion":  gostVersion(),
-		"gostStatus":   systemctlStatus("gost"),
+		"gostVersion":  gostVersion,
+		"gostStatus":   gostStatus(gostVersion),
 	}
 	var resp struct {
 		NodeID     string `json:"nodeId"`
@@ -151,13 +152,14 @@ func (a *Agent) register() error {
 
 func (a *Agent) heartbeat() error {
 	hostname, _ := os.Hostname()
+	gostVersion := gostVersion()
 	req := map[string]any{
 		"hostname":     hostname,
 		"os":           linuxPrettyName(),
 		"arch":         runtime.GOARCH,
 		"agentVersion": agentVersion,
-		"gostVersion":  gostVersion(),
-		"gostStatus":   systemctlStatus("gost"),
+		"gostVersion":  gostVersion,
+		"gostStatus":   gostStatus(gostVersion),
 	}
 	var resp model.Node
 	return a.postJSON("/api/agent/heartbeat", a.authHeader(), req, &resp)
@@ -523,6 +525,13 @@ func systemctlStatus(service string) string {
 		return "unknown"
 	}
 	return out
+}
+
+func gostStatus(version string) string {
+	if strings.TrimSpace(version) == "not installed" {
+		return "not installed"
+	}
+	return systemctlStatus("gost")
 }
 
 func linuxPrettyName() string {

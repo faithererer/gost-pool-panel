@@ -307,6 +307,10 @@ func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err)
 		return
 	}
+	if _, err := s.store.CreateTaskFromPayload(node.ID, "sync_node_proxy", s.defaultNodeProxyPayload(node)); err != nil {
+		writeError(w, http.StatusInternalServerError, err)
+		return
+	}
 	writeJSON(w, http.StatusCreated, map[string]string{
 		"nodeId":     node.ID,
 		"agentToken": node.AgentToken,
@@ -441,6 +445,25 @@ func (s *Server) buildNodeProxyPayload(r *http.Request) (string, error) {
 	return string(b), nil
 }
 
+func (s *Server) defaultNodeProxyPayload(node model.Node) map[string]any {
+	state := s.store.Snapshot()
+	httpPort := node.HTTPPort
+	if httpPort <= 0 {
+		httpPort = 18080
+	}
+	socksPort := node.SocksPort
+	if socksPort <= 0 {
+		socksPort = 18081
+	}
+	return map[string]any{
+		"httpPort":    httpPort,
+		"socksPort":   socksPort,
+		"username":    state.Settings.ProxyUsername,
+		"password":    state.Settings.ProxyPassword,
+		"gostVersion": "3.2.6",
+	}
+}
+
 func (s *Server) signSession(expires time.Time) string {
 	payload := fmt.Sprintf("%s|%d", s.cfg.AdminUser, expires.Unix())
 	mac := hmac.New(sha256.New, []byte(s.cfg.Secret))
@@ -566,7 +589,7 @@ func gostText(version, status string) string {
 	if status == "" {
 		status = "unknown"
 	}
-	if version == "not installed" && status == "not installed" {
+	if version == "not installed" {
 		return "not installed"
 	}
 	if version == status {

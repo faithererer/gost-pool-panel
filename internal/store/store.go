@@ -185,6 +185,14 @@ func (s *Store) RegisterNode(registerToken, name, publicIP, hostname, osName, ar
 	return node, s.saveLocked()
 }
 
+func (s *Store) CreateTaskFromPayload(nodeID, taskType string, payload any) (model.Task, error) {
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return model.Task{}, err
+	}
+	return s.CreateTask(nodeID, taskType, string(b))
+}
+
 func (s *Store) AuthenticateAgent(nodeID, token string) (model.Node, bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
