@@ -95,9 +95,11 @@ export default function Pools() {
     setEnabled(pool.enabled);
   };
 
+  const quoteForCurl = (value: string) => `"${value.replace(/(["\\])/g, '\\$1')}"`;
+
   const copyTestCommand = async (port: number, protocol: string) => {
     const host = window.location.hostname;
-    const auth = state.settings?.proxyUsername ? `-U '${state.settings.proxyUsername}:${state.settings.proxyPassword || 'PASSWORD'}' ` : '';
+    const auth = state.settings?.proxyUsername ? `--proxy-user ${quoteForCurl(`${state.settings.proxyUsername}:${state.settings.proxyPassword || 'PASSWORD'}`)} ` : '';
     const ip = host.includes(':') ? `[${host}]` : host;
     const command = `curl -x ${protocol}://${ip}:${port} ${auth}https://api64.ipify.org`;
     const ok = await copyText(command);
