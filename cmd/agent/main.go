@@ -1,0 +1,298 @@
+package main
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"time"
+
+	"gost-pool-panel/internal/model"
+)
+
+const agentVersion = "0.1.0"
+
+type Config struct {
+	Server        string `json:"server"`
+	RegisterToken string `json:"registerToken"`
+	NodeName      string `json:"nodeName"`
+	NodeID        string `json:"nodeId"`
+	AgentToken    string `json:"agentToken"`
+}
+
+type Agent struct {
+	cfgPath string
+	cfg     Config
+	client  *http.Client
+}
+
+func main() {
+	if runtime.GOOS != "linux" {
+		log.Fatalf("gost-pool-agent only supports Linux nodes, current OS is %s", runtime.GOOS)
+	}
+
+	var cfg Config
+	var cfgPath string
+	flag.StringVar(&cfg.Server, "server", getenv("GPP_SERVER", ""), "panel server URL")
+	flag.StringVar(&cfg.RegisterToken, "token", getenv("GPP_REGISTER_TOKEN", ""), "register token")
+	flag.StringVar(&cfg.NodeName, "name", getenv("GPP_NODE_NAME", ""), "node name")
+	flag.StringVar(&cfgPath, "config", getenv("GPP_CONFIG", "/opt/gost-pool-agent/agent.json"), "config path")
+	flag.Parse()
+
+	a := &Agent{cfgPath: cfgPath, cfg: cfg, client: &http.Client{Timeout: 15 * time.Second}}
+	if err := a.loadConfig(); err != nil {
+		log.Printf("config load skipped: %v", err)
+	}
+	if a.cfg.Server == "" {
+		log.Fatal("--server is required")
+	}
+	if a.cfg.NodeID == "" {
+		if err := a.register(); err != nil {
+			log.Fatalf("register failed: %v", err)
+		}
+	}
+
+	ticker := time.NewTicker(20 * time.Second)
+	defer ticker.Stop()
+	for {
+		if err := a.heartbeat(); err != nil {
+			log.Printf("heartbeat failed: %v", err)
+		}
+		if err := a.pollTasks(); err != nil {
+			log.Printf("task polling failed: %v", err)
+		}
+		<-ticker.C
+	}
+}
+
+func (a *Agent) loadConfig() error {
+	b, err := os.ReadFile(a.cfgPath)
+	if err != nil {
+		return err
+	}
+	var saved Config
+	if err := json.Unmarshal(b, &saved); err != nil {
+		return err
+	}
+	if a.cfg.Server == "" {
+		a.cfg.Server = saved.Server
+	}
+	if a.cfg.RegisterToken == "" {
+		a.cfg.RegisterToken = saved.RegisterToken
+	}
+	if a.cfg.NodeName == "" {
+		a.cfg.NodeName = saved.NodeName
+	}
+	a.cfg.NodeID = saved.NodeID
+	a.cfg.AgentToken = saved.AgentToken
+	return nil
+}
+
+func (a *Agent) saveConfig() error {
+	if err := os.MkdirAll(filepath.Dir(a.cfgPath), 0o700); err != nil {
+		return err
+	}
+	b, err := json.MarshalIndent(a.cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(a.cfgPath, b, 0o600)
+}
+
+func (a *Agent) register() error {
+	if a.cfg.RegisterToken == "" {
+		return errors.New("--token is required for first registration")
+	}
+	hostname, _ := os.Hostname()
+	req := map[string]string{
+		"token":        a.cfg.RegisterToken,
+		"name":         a.cfg.NodeName,
+		"hostname":     hostname,
+		"os":           linuxPrettyName(),
+		"arch":         runtime.GOARCH,
+		"agentVersion": agentVersion,
+		"gostVersion":  commandOutput("gost", "-V"),
+		"gostStatus":   systemctlStatus("gost"),
+	}
+	var resp struct {
+		NodeID     string `json:"nodeId"`
+		AgentToken string `json:"agentToken"`
+	}
+	if err := a.postJSON("/api/agent/register", "", req, &resp); err != nil {
+		return err
+	}
+	a.cfg.NodeID = resp.NodeID
+	a.cfg.AgentToken = resp.AgentToken
+	return a.saveConfig()
+}
+
+func (a *Agent) heartbeat() error {
+	hostname, _ := os.Hostname()
+	req := map[string]any{
+		"hostname":     hostname,
+		"os":           linuxPrettyName(),
+		"arch":         runtime.GOARCH,
+		"agentVersion": agentVersion,
+		"gostVersion":  commandOutput("gost", "-V"),
+		"gostStatus":   systemctlStatus("gost"),
+	}
+	var resp model.Node
+	return a.postJSON("/api/agent/heartbeat", a.authHeader(), req, &resp)
+}
+
+func (a *Agent) pollTasks() error {
+	var tasks []model.Task
+	if err := a.getJSON("/api/agent/tasks", a.authHeader(), &tasks); err != nil {
+		return err
+	}
+	for _, t := range tasks {
+		status, result, errText := a.executeTask(t)
+		req := map[string]string{"status": status, "result": result, "error": errText}
+		if err := a.postJSON("/api/agent/tasks/"+t.ID+"/result", a.authHeader(), req, nil); err != nil {
+			log.Printf("report task %s failed: %v", t.ID, err)
+		}
+	}
+	return nil
+}
+
+func (a *Agent) executeTask(t model.Task) (string, string, string) {
+	switch t.Type {
+	case "restart_gost":
+		return runCommand("systemctl", "restart", "gost")
+	case "apply_config":
+		if err := backupAndWrite("/etc/gost/gost.yml", []byte(t.Payload)); err != nil {
+			return model.TaskStatusFailed, "", err.Error()
+		}
+		status, result, errText := runCommand("systemctl", "restart", "gost")
+		if status == model.TaskStatusFailed {
+			return status, result, errText
+		}
+		return model.TaskStatusSuccess, "gost config applied\n" + result, ""
+	case "update_ports":
+		return model.TaskStatusSuccess, "port update task received; config generator will fill this in next iteration", ""
+	case "uninstall_agent":
+		return model.TaskStatusSuccess, "uninstall task acknowledged; agent removal script will be implemented with confirmation flow", ""
+	default:
+		return model.TaskStatusFailed, "", "unknown task type: " + t.Type
+	}
+}
+
+func (a *Agent) authHeader() string {
+	return "Bearer " + a.cfg.NodeID + ":" + a.cfg.AgentToken
+}
+
+func (a *Agent) postJSON(path, auth string, reqBody any, out any) error {
+	b, err := json.Marshal(reqBody)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(a.cfg.Server, "/")+path, bytes.NewReader(b))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if auth != "" {
+		req.Header.Set("Authorization", auth)
+	}
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return decodeResponse(resp, out)
+}
+
+func (a *Agent) getJSON(path, auth string, out any) error {
+	req, err := http.NewRequest(http.MethodGet, strings.TrimRight(a.cfg.Server, "/")+path, nil)
+	if err != nil {
+		return err
+	}
+	if auth != "" {
+		req.Header.Set("Authorization", auth)
+	}
+	resp, err := a.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return decodeResponse(resp, out)
+}
+
+func decodeResponse(resp *http.Response, out any) error {
+	b, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("http %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+	}
+	if out == nil || len(b) == 0 {
+		return nil
+	}
+	return json.Unmarshal(b, out)
+}
+
+func backupAndWrite(path string, content []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	if old, err := os.ReadFile(path); err == nil {
+		backup := fmt.Sprintf("%s.bak.%s", path, time.Now().UTC().Format("20060102150405"))
+		if err := os.WriteFile(backup, old, 0o600); err != nil {
+			return err
+		}
+	}
+	return os.WriteFile(path, content, 0o600)
+}
+
+func runCommand(name string, args ...string) (string, string, string) {
+	cmd := exec.Command(name, args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return model.TaskStatusFailed, string(out), err.Error()
+	}
+	return model.TaskStatusSuccess, string(out), ""
+}
+
+func commandOutput(name string, args ...string) string {
+	cmd := exec.Command(name, args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func systemctlStatus(service string) string {
+	out := commandOutput("systemctl", "is-active", service)
+	if out == "" {
+		return "unknown"
+	}
+	return out
+}
+
+func linuxPrettyName() string {
+	b, err := os.ReadFile("/etc/os-release")
+	if err != nil {
+		return "linux"
+	}
+	for _, line := range strings.Split(string(b), "\n") {
+		if strings.HasPrefix(line, "PRETTY_NAME=") {
+			return strings.Trim(strings.TrimPrefix(line, "PRETTY_NAME="), `"`)
+		}
+	}
+	return "linux"
+}
+
+func getenv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}

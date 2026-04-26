@@ -1,0 +1,7 @@
+.git
+data
+dist
+bin
+*.exe
+*.log
+*.tmp

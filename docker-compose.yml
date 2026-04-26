@@ -1,0 +1,17 @@
+services:
+  gost-pool-panel:
+    build: .
+    container_name: gost-pool-panel
+    restart: unless-stopped
+    ports:
+      - "${PANEL_PORT:-3000}:3000"
+    environment:
+      PANEL_PORT: "3000"
+      PANEL_LISTEN: ":3000"
+      PANEL_BASE_URL: "${PANEL_BASE_URL:-http://127.0.0.1:3000}"
+      PANEL_ADMIN_USER: "${PANEL_ADMIN_USER:-admin}"
+      PANEL_ADMIN_PASSWORD: "${PANEL_ADMIN_PASSWORD:-admin123}"
+      PANEL_SECRET: "${PANEL_SECRET:-change-me}"
+      PANEL_DATA_PATH: "/data/state.json"
+    volumes:
+      - ./data:/data
