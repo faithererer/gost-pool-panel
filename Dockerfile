@@ -17,6 +17,14 @@ RUN apk add --no-cache ca-certificates tar wget \
     && find /tmp/gost -type f -name gost -exec cp {} /out/gost \; \
     && chmod +x /out/gost
 
+FROM node:20-alpine AS frontend
+
+WORKDIR /src/frontend
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend ./
+RUN npm run build
+
 FROM alpine:3.20
 
 WORKDIR /app
@@ -26,6 +34,7 @@ ENV PANEL_DATA_PATH=/data/state.json
 COPY --from=build /out/gost-pool-panel /app/gost-pool-panel
 COPY --from=build /out/dist /app/dist
 COPY --from=build /out/gost /usr/local/bin/gost
+COPY --from=frontend /src/frontend/dist /app/frontend/dist
 VOLUME ["/data"]
 EXPOSE 3000
 CMD ["/app/gost-pool-panel"]

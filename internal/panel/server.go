@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"net"
 	"net/http"
 	"net/url"
@@ -39,6 +38,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("/logout", s.handleLogout)
 	mux.HandleFunc("/install.sh", s.handleInstallScript)
 	mux.HandleFunc("/downloads/", s.handleDownload)
+	mux.HandleFunc("/assets/", s.handleFrontendAsset)
 
 	mux.HandleFunc("/api/agent/register-token/check", s.handleRegisterTokenCheck)
 	mux.HandleFunc("/api/agent/register", s.handleAgentRegister)
@@ -67,7 +67,11 @@ func (s *Server) requireLoginFunc(next http.HandlerFunc) http.HandlerFunc {
 
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		s.renderLogin(w, "")
+		if s.frontendAvailable() {
+			s.serveFrontend(w, r)
+			return
+		}
+		s.renderFallbackLogin(w, "")
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -75,11 +79,11 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := r.ParseForm(); err != nil {
-		s.renderLogin(w, "表单解析失败")
+		s.renderFallbackLogin(w, "表单解析失败")
 		return
 	}
 	if r.FormValue("username") != s.cfg.AdminUser || r.FormValue("password") != s.cfg.AdminPassword {
-		s.renderLogin(w, "账号或密码错误")
+		s.renderFallbackLogin(w, "账号或密码错误")
 		return
 	}
 	http.SetCookie(w, &http.Cookie{
@@ -98,28 +102,15 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleApp(w http.ResponseWriter, r *http.Request) {
+	if s.frontendAvailable() {
+		s.serveFrontend(w, r)
+		return
+	}
 	if r.Method == http.MethodPost {
 		s.handleFormPost(w, r)
 		return
 	}
-	switch r.URL.Path {
-	case "/":
-		s.renderDashboard(w)
-	case "/nodes":
-		s.renderNodes(w)
-	case "/tokens":
-		s.renderTokens(w)
-	case "/groups":
-		s.renderGroups(w)
-	case "/pools":
-		s.renderPools(w)
-	case "/tasks":
-		s.renderTasks(w)
-	case "/settings":
-		s.renderSettings(w)
-	default:
-		http.NotFound(w, r)
-	}
+	http.Error(w, "frontend dist not found. run: npm run build --prefix frontend", http.StatusServiceUnavailable)
 }
 
 func (s *Server) handleFormPost(w http.ResponseWriter, r *http.Request) {
@@ -239,6 +230,14 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.ServeFile(w, r, path)
+}
+
+func (s *Server) handleFrontendAsset(w http.ResponseWriter, r *http.Request) {
+	if !s.frontendAvailable() {
+		http.NotFound(w, r)
+		return
+	}
+	s.serveFrontend(w, r)
 }
 
 func (s *Server) handleRegisterTokenCheck(w http.ResponseWriter, r *http.Request) {
@@ -548,77 +547,6 @@ func shellQuote(v string) string {
 	return "'" + strings.ReplaceAll(v, "'", "'\"'\"'") + "'"
 }
 
-func logRequests(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		next.ServeHTTP(w, r)
-	})
-}
-
-func renderTemplate(w http.ResponseWriter, title string, data any, body string) {
-	funcs := template.FuncMap{
-		"formatTime":  formatTime,
-		"formatBytes": formatBytes,
-		"contains":    contains,
-		"join":        strings.Join,
-		"gostText":    gostText,
-		"proxyAddr":   proxyAddr,
-		"shellQuote":  shellQuote,
-		"userPass":    userPass,
-	}
-	t := template.Must(template.New("page").Funcs(funcs).Parse(baseHTML + body))
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := t.Execute(w, map[string]any{"Title": title, "Data": data}); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
-}
-
-func formatTime(t time.Time) string {
-	if t.IsZero() {
-		return "-"
-	}
-	return t.Local().Format("2006-01-02 15:04:05")
-}
-
-func formatBytes(n int64) string {
-	const unit = 1024
-	if n < unit {
-		return fmt.Sprintf("%d B", n)
-	}
-	div, exp := int64(unit), 0
-	for n/div >= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
-}
-
-func contains(values []string, needle string) bool {
-	for _, v := range values {
-		if v == needle {
-			return true
-		}
-	}
-	return false
-}
-
-func gostText(version, status string) string {
-	version = strings.TrimSpace(version)
-	status = strings.TrimSpace(status)
-	if version == "" {
-		version = "not installed"
-	}
-	if status == "" {
-		status = "unknown"
-	}
-	if version == "not installed" {
-		return "not installed"
-	}
-	if version == status {
-		return version
-	}
-	return strings.TrimSpace(version + " " + status)
-}
-
 func proxyAddr(baseURL string, port int) string {
 	u, err := url.Parse(baseURL)
 	if err != nil || u.Hostname() == "" {
@@ -627,8 +555,87 @@ func proxyAddr(baseURL string, port int) string {
 	return net.JoinHostPort(u.Hostname(), strconv.Itoa(port))
 }
 
-func userPass(settings model.Settings) string {
-	return settings.ProxyUsername + ":" + settings.ProxyPassword
+func logRequests(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) frontendDistDir() string {
+	if v := strings.TrimSpace(os.Getenv("PANEL_FRONTEND_DIST")); v != "" {
+		return v
+	}
+	return filepath.Join("frontend", "dist")
+}
+
+func (s *Server) frontendAvailable() bool {
+	info, err := os.Stat(filepath.Join(s.frontendDistDir(), "index.html"))
+	return err == nil && !info.IsDir()
+}
+
+func (s *Server) serveFrontend(w http.ResponseWriter, r *http.Request) {
+	dist := s.frontendDistDir()
+	indexPath := filepath.Join(dist, "index.html")
+	if r.URL.Path == "/" || r.URL.Path == "/login" {
+		http.ServeFile(w, r, indexPath)
+		return
+	}
+
+	requested := filepath.Clean(strings.TrimPrefix(r.URL.Path, "/"))
+	if requested == "." || strings.HasPrefix(requested, "..") {
+		http.ServeFile(w, r, indexPath)
+		return
+	}
+
+	path := filepath.Join(dist, requested)
+	distAbs, distErr := filepath.Abs(dist)
+	pathAbs, pathErr := filepath.Abs(path)
+	if distErr != nil || pathErr != nil || (pathAbs != distAbs && !strings.HasPrefix(pathAbs, distAbs+string(os.PathSeparator))) {
+		http.NotFound(w, r)
+		return
+	}
+	if info, err := os.Stat(path); err == nil && !info.IsDir() {
+		http.ServeFile(w, r, path)
+		return
+	}
+	http.ServeFile(w, r, indexPath)
+}
+
+func (s *Server) renderFallbackLogin(w http.ResponseWriter, msg string) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	errorHTML := ""
+	if msg != "" {
+		errorHTML = `<p style="color:#b42318">` + strings.ReplaceAll(msg, "<", "&lt;") + `</p>`
+	}
+	fmt.Fprintf(w, `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GOST Pool Panel</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0f172a; color: #e5e7eb; }
+    form { width: min(360px, calc(100vw - 32px)); background: #111827; border: 1px solid #374151; border-radius: 8px; padding: 24px; }
+    h1 { margin: 0 0 18px; font-size: 20px; }
+    label { display: block; margin: 12px 0 6px; font-size: 13px; color: #9ca3af; }
+    input { width: 100%%; box-sizing: border-box; padding: 10px 12px; border-radius: 6px; border: 1px solid #374151; background: #030712; color: #f9fafb; }
+    button { margin-top: 16px; width: 100%%; padding: 10px 12px; border: 0; border-radius: 6px; background: #e5e7eb; color: #111827; font-weight: 700; cursor: pointer; }
+    p { font-size: 13px; }
+  </style>
+</head>
+<body>
+  <form method="post" action="/login">
+    <h1>GOST Pool Panel</h1>
+    %s
+    <label>账号</label>
+    <input name="username" value="admin" autocomplete="username">
+    <label>密码</label>
+    <input name="password" type="password" autocomplete="current-password">
+    <button type="submit">登录</button>
+    <p>未找到前端构建产物时显示该备用登录页。完整 UI 请运行 npm run build --prefix frontend。</p>
+  </form>
+</body>
+</html>`, errorHTML)
 }
 
 func normalizeEgressMode(mode string) string {

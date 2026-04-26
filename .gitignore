@@ -6,3 +6,5 @@ bin/
 *.exe
 *.log
 *.tmp
+/frontend/node_modules
+/frontend/dist

@@ -346,7 +346,7 @@ func (s *Server) handleAdminGroupsAPI(w http.ResponseWriter, r *http.Request, pa
 	}
 	groupID := parts[1]
 	switch r.Method {
-	case http.MethodPatch:
+	case http.MethodPatch, http.MethodPut:
 		var req groupRequest
 		if !decodeJSON(w, r, &req) {
 			return true
@@ -385,6 +385,13 @@ func (s *Server) handleAdminPoolsAPI(w http.ResponseWriter, r *http.Request, par
 			writeError(w, http.StatusInternalServerError, err)
 			return true
 		}
+		if req.Enabled != nil && !*req.Enabled {
+			pool, _ = s.store.UpdatePool(pool.ID, store.PoolPatch{Enabled: req.Enabled})
+			_ = s.store.UpdatePoolRuntime(pool.ID, "disabled", "")
+			pool, _ = s.store.Pool(pool.ID)
+			writeJSON(w, http.StatusCreated, pool)
+			return true
+		}
 		_ = s.restartPoolRuntime(pool.ID)
 		pool, _ = s.store.Pool(pool.ID)
 		writeJSON(w, http.StatusCreated, pool)
@@ -407,7 +414,7 @@ func (s *Server) handleAdminPoolsAPI(w http.ResponseWriter, r *http.Request, par
 		return false
 	}
 	switch r.Method {
-	case http.MethodPatch:
+	case http.MethodPatch, http.MethodPut:
 		pool, err := s.updatePoolFromJSON(w, r, poolID)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err)
