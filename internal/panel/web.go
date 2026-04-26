@@ -359,6 +359,16 @@ if [[ -z "$TOKEN" ]]; then
   exit 1
 fi
 
+echo "Checking register token"
+TOKEN_CHECK="$(curl -sS -w '\n%{http_code}' "$SERVER/api/agent/register-token/check?token=$TOKEN")"
+TOKEN_CODE="$(printf '%s\n' "$TOKEN_CHECK" | tail -n 1)"
+TOKEN_BODY="$(printf '%s\n' "$TOKEN_CHECK" | sed '$d')"
+if [[ "$TOKEN_CODE" != "200" ]]; then
+  echo "Register token is not available. Generate a new token in the panel."
+  echo "$TOKEN_BODY"
+  exit 1
+fi
+
 ARCH="$(uname -m)"
 case "$ARCH" in
   x86_64|amd64) BIN="gost-pool-agent-linux-amd64" ;;

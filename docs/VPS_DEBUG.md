@@ -80,7 +80,7 @@ journalctl -u gost-pool-agent -f
 
 面板的“节点”页支持删除单个节点记录，也支持清理所有 `agent uninstalled` 节点及其任务记录。这个删除只清理面板数据，不会再操作 VPS。
 
-如果误删了仍在运行的节点记录，在面板重新生成 token，并在该 VPS 上重新执行一键安装命令。新版 agent 收到 401 后会使用当前安装命令里的 token 重新注册。
+注册 token 是一次性的。清理节点记录后，旧安装命令仍然能下载 `install.sh`，但脚本会在下载 agent 前检查 token 状态；如果 token 已使用或过期，会要求你在面板重新生成 token。
 
 ## 3. 跑通代理池
 

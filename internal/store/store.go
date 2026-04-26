@@ -111,6 +111,26 @@ func (s *Store) CreateRegisterToken(name string, ttl time.Duration) (model.Regis
 	return t, s.saveLocked()
 }
 
+func (s *Store) CheckRegisterToken(token string) (int, string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	for i := range s.state.RegisterTokens {
+		t := &s.state.RegisterTokens[i]
+		if t.Token != token {
+			continue
+		}
+		if t.Used {
+			return 409, "register token already used"
+		}
+		if now.After(t.ExpiresAt) {
+			return 410, "register token expired"
+		}
+		return 200, "register token available"
+	}
+	return 404, "invalid register token"
+}
+
 func (s *Store) RegisterNode(registerToken, name, publicIP, hostname, osName, arch, agentVersion, gostVersion, gostStatus string) (model.Node, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

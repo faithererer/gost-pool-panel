@@ -38,6 +38,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("/install.sh", s.handleInstallScript)
 	mux.HandleFunc("/downloads/", s.handleDownload)
 
+	mux.HandleFunc("/api/agent/register-token/check", s.handleRegisterTokenCheck)
 	mux.HandleFunc("/api/agent/register", s.handleAgentRegister)
 	mux.HandleFunc("/api/agent/heartbeat", s.handleAgentHeartbeat)
 	mux.HandleFunc("/api/agent/tasks", s.handleAgentTasks)
@@ -223,6 +224,30 @@ func (s *Server) handleDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.ServeFile(w, r, path)
+}
+
+func (s *Server) handleRegisterTokenCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	token := strings.TrimSpace(r.URL.Query().Get("token"))
+	if token == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"status":  "missing",
+			"message": "register token is required",
+		})
+		return
+	}
+	code, message := s.store.CheckRegisterToken(token)
+	status := "available"
+	if code != http.StatusOK {
+		status = "unavailable"
+	}
+	writeJSON(w, code, map[string]string{
+		"status":  status,
+		"message": message,
+	})
 }
 
 func (s *Server) handleAdminAPI(w http.ResponseWriter, r *http.Request) {
