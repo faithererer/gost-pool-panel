@@ -123,6 +123,7 @@ ghcr.io/YOUR_NAME/gost-pool-panel:v0.1.0
 
 - [发布指南](docs/RELEASE.md)
 - [VPS 调试指南](docs/VPS_DEBUG.md)
+- [前端 API 交接文档](docs/FRONTEND_API.md)
 
 ## 节点接入流程
 

@@ -20,6 +20,16 @@ type Store struct {
 	state model.State
 }
 
+type PoolPatch struct {
+	Name        *string
+	GroupIDs    []string
+	GroupIDsSet bool
+	HTTPPort    *int
+	SocksPort   *int
+	Strategy    *string
+	Enabled     *bool
+}
+
 func New(path string) (*Store, error) {
 	s := &Store{path: path}
 	if err := s.load(); err != nil {
@@ -95,6 +105,50 @@ func (s *Store) Snapshot() model.State {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return cloneState(s.state)
+}
+
+func (s *Store) Node(nodeID string) (model.Node, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, n := range s.state.Nodes {
+		if n.ID == nodeID {
+			return n, true
+		}
+	}
+	return model.Node{}, false
+}
+
+func (s *Store) Pool(poolID string) (model.Pool, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, p := range s.state.Pools {
+		if p.ID == poolID {
+			return p, true
+		}
+	}
+	return model.Pool{}, false
+}
+
+func (s *Store) Group(groupID string) (model.Group, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, g := range s.state.Groups {
+		if g.ID == groupID {
+			return g, true
+		}
+	}
+	return model.Group{}, false
+}
+
+func (s *Store) Task(taskID string) (model.Task, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, t := range s.state.Tasks {
+		if t.ID == taskID {
+			return t, true
+		}
+	}
+	return model.Task{}, false
 }
 
 func (s *Store) CreateRegisterToken(name string, ttl time.Duration) (model.RegisterToken, error) {
@@ -272,6 +326,60 @@ func (s *Store) CreateGroup(name, remark string) (model.Group, error) {
 	return g, s.saveLocked()
 }
 
+func (s *Store) UpdateGroup(groupID, name, remark string) (model.Group, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	for i := range s.state.Groups {
+		if s.state.Groups[i].ID == groupID {
+			if name != "" {
+				s.state.Groups[i].Name = name
+			}
+			s.state.Groups[i].Remark = remark
+			s.state.Groups[i].UpdatedAt = now
+			if err := s.saveLocked(); err != nil {
+				return model.Group{}, err
+			}
+			return s.state.Groups[i], nil
+		}
+	}
+	return model.Group{}, errors.New("group not found")
+}
+
+func (s *Store) DeleteGroup(groupID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	found := false
+	groups := s.state.Groups[:0]
+	for _, g := range s.state.Groups {
+		if g.ID == groupID {
+			found = true
+			continue
+		}
+		groups = append(groups, g)
+	}
+	if !found {
+		return errors.New("group not found")
+	}
+	now := time.Now().UTC()
+	s.state.Groups = groups
+	for i := range s.state.Nodes {
+		next := removeString(s.state.Nodes[i].GroupIDs, groupID)
+		if len(next) != len(s.state.Nodes[i].GroupIDs) {
+			s.state.Nodes[i].GroupIDs = next
+			s.state.Nodes[i].UpdatedAt = now
+		}
+	}
+	for i := range s.state.Pools {
+		next := removeString(s.state.Pools[i].GroupIDs, groupID)
+		if len(next) != len(s.state.Pools[i].GroupIDs) {
+			s.state.Pools[i].GroupIDs = next
+			s.state.Pools[i].UpdatedAt = now
+		}
+	}
+	return s.saveLocked()
+}
+
 func (s *Store) AssignGroups(nodeID string, groupIDs []string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -372,6 +480,61 @@ func (s *Store) CreatePool(name string, groupIDs []string, httpPort, socksPort i
 	return p, s.saveLocked()
 }
 
+func (s *Store) UpdatePool(poolID string, patch PoolPatch) (model.Pool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	for i := range s.state.Pools {
+		p := &s.state.Pools[i]
+		if p.ID != poolID {
+			continue
+		}
+		if patch.Name != nil && *patch.Name != "" {
+			p.Name = *patch.Name
+		}
+		if patch.GroupIDsSet {
+			p.GroupIDs = uniqueStrings(patch.GroupIDs)
+		}
+		if patch.HTTPPort != nil {
+			p.HTTPPort = *patch.HTTPPort
+		}
+		if patch.SocksPort != nil {
+			p.SocksPort = *patch.SocksPort
+		}
+		if patch.Strategy != nil && *patch.Strategy != "" {
+			p.Strategy = *patch.Strategy
+		}
+		if patch.Enabled != nil {
+			p.Enabled = *patch.Enabled
+		}
+		p.UpdatedAt = now
+		if err := s.saveLocked(); err != nil {
+			return model.Pool{}, err
+		}
+		return *p, nil
+	}
+	return model.Pool{}, errors.New("pool not found")
+}
+
+func (s *Store) DeletePool(poolID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	found := false
+	pools := s.state.Pools[:0]
+	for _, p := range s.state.Pools {
+		if p.ID == poolID {
+			found = true
+			continue
+		}
+		pools = append(pools, p)
+	}
+	if !found {
+		return errors.New("pool not found")
+	}
+	s.state.Pools = pools
+	return s.saveLocked()
+}
+
 func (s *Store) UpdatePoolRuntime(poolID, status, errText string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -400,6 +563,87 @@ func (s *Store) CreateTask(nodeID, taskType, payload string) (model.Task, error)
 		Type:      taskType,
 		Status:    model.TaskStatusPending,
 		Payload:   payload,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	s.state.Tasks = append([]model.Task{t}, s.state.Tasks...)
+	return t, s.saveLocked()
+}
+
+func (s *Store) CreateTasks(nodeIDs []string, taskType, payload string) ([]model.Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if len(nodeIDs) == 0 {
+		return nil, errors.New("nodeIds are required")
+	}
+	existing := map[string]bool{}
+	for _, n := range s.state.Nodes {
+		existing[n.ID] = true
+	}
+	seen := map[string]bool{}
+	var ids []string
+	for _, id := range nodeIDs {
+		if id == "" || seen[id] {
+			continue
+		}
+		if !existing[id] {
+			return nil, errors.New("node not found: " + id)
+		}
+		seen[id] = true
+		ids = append(ids, id)
+	}
+	if len(ids) == 0 {
+		return nil, errors.New("nodeIds are required")
+	}
+	now := time.Now().UTC()
+	tasks := make([]model.Task, 0, len(ids))
+	for _, id := range ids {
+		tasks = append(tasks, model.Task{
+			ID:        randomID("task"),
+			NodeID:    id,
+			Type:      taskType,
+			Status:    model.TaskStatusPending,
+			Payload:   payload,
+			CreatedAt: now,
+			UpdatedAt: now,
+		})
+	}
+	s.state.Tasks = append(tasks, s.state.Tasks...)
+	return tasks, s.saveLocked()
+}
+
+func (s *Store) RetryTask(taskID string) (model.Task, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var original model.Task
+	found := false
+	for _, t := range s.state.Tasks {
+		if t.ID == taskID {
+			original = t
+			found = true
+			break
+		}
+	}
+	if !found {
+		return model.Task{}, errors.New("task not found")
+	}
+	nodeFound := false
+	for _, n := range s.state.Nodes {
+		if n.ID == original.NodeID {
+			nodeFound = true
+			break
+		}
+	}
+	if !nodeFound {
+		return model.Task{}, errors.New("node not found")
+	}
+	now := time.Now().UTC()
+	t := model.Task{
+		ID:        randomID("task"),
+		NodeID:    original.NodeID,
+		Type:      original.Type,
+		Status:    model.TaskStatusPending,
+		Payload:   original.Payload,
 		CreatedAt: now,
 		UpdatedAt: now,
 	}
@@ -512,6 +756,17 @@ func uniqueStrings(values []string) []string {
 			continue
 		}
 		seen[v] = true
+		out = append(out, v)
+	}
+	return out
+}
+
+func removeString(values []string, needle string) []string {
+	out := values[:0]
+	for _, v := range values {
+		if v == needle {
+			continue
+		}
 		out = append(out, v)
 	}
 	return out

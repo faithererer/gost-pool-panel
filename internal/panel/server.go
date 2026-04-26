@@ -47,7 +47,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("/api/agent/tasks/", s.handleAgentTaskResult)
 	mux.HandleFunc("/api/agent/traffic", s.handleAgentTraffic)
 
-	mux.HandleFunc("/api/admin/", s.requireLoginFunc(s.handleAdminAPI))
+	mux.HandleFunc("/api/admin/login", s.handleAdminLogin)
+	mux.HandleFunc("/api/admin/logout", s.handleAdminLogout)
+	mux.HandleFunc("/api/admin/session", s.handleAdminSession)
+	mux.HandleFunc("/api/admin/", s.requireAdminAPIFunc(s.handleAdminAPI))
 	mux.HandleFunc("/", s.requireLoginFunc(s.handleApp))
 	return logRequests(mux)
 }
@@ -260,40 +263,6 @@ func (s *Server) handleRegisterTokenCheck(w http.ResponseWriter, r *http.Request
 		"status":  status,
 		"message": message,
 	})
-}
-
-func (s *Server) handleAdminAPI(w http.ResponseWriter, r *http.Request) {
-	switch {
-	case r.Method == http.MethodGet && r.URL.Path == "/api/admin/nodes":
-		writeJSON(w, http.StatusOK, s.store.Snapshot().Nodes)
-	case r.Method == http.MethodGet && r.URL.Path == "/api/admin/groups":
-		writeJSON(w, http.StatusOK, s.store.Snapshot().Groups)
-	case r.Method == http.MethodGet && r.URL.Path == "/api/admin/tasks":
-		writeJSON(w, http.StatusOK, s.store.Snapshot().Tasks)
-	case r.Method == http.MethodGet && r.URL.Path == "/api/admin/install-command":
-		token := r.URL.Query().Get("token")
-		name := r.URL.Query().Get("name")
-		writeJSON(w, http.StatusOK, map[string]string{"command": s.installCommand(token, name)})
-	case r.Method == http.MethodPost && r.URL.Path == "/api/admin/register-tokens":
-		var req struct {
-			Name     string `json:"name"`
-			TTLHours int    `json:"ttlHours"`
-		}
-		if !decodeJSON(w, r, &req) {
-			return
-		}
-		if req.TTLHours <= 0 {
-			req.TTLHours = 24
-		}
-		t, err := s.store.CreateRegisterToken(req.Name, time.Duration(req.TTLHours)*time.Hour)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err)
-			return
-		}
-		writeJSON(w, http.StatusCreated, t)
-	default:
-		http.NotFound(w, r)
-	}
 }
 
 func (s *Server) handleAgentRegister(w http.ResponseWriter, r *http.Request) {
