@@ -26,6 +26,11 @@ PANEL_SECRET=一段随机字符串
 docker compose --env-file .env up -d --build
 ```
 
+默认 `docker-compose.yml` 使用 host network，这样代理池入口端口可以直接监听在管理端 VPS 上。请确认安全组/防火墙放行：
+
+- 面板端口：默认 `3000`
+- 你在代理池里配置的 HTTP/SOCKS5 入口端口
+
 打开：
 
 ```text
@@ -77,17 +82,57 @@ journalctl -u gost-pool-agent -f
 
 如果误删了仍在运行的节点记录，在面板重新生成 token，并在该 VPS 上重新执行一键安装命令。新版 agent 收到 401 后会使用当前安装命令里的 token 重新注册。
 
+## 3. 跑通代理池
+
+### 3.1 同步节点代理
+
+节点上线后，进入“设置”确认全局出口账号密码，然后进入“节点”，对节点下发“同步节点代理”任务。
+
+agent 会在节点 VPS 上执行：
+
+- 下载并安装 GOST v3 到 `/usr/local/bin/gost`
+- 写入 `/etc/gost/gost.json`
+- 创建并重启 `gost.service`
+- 暴露节点侧 HTTP/SOCKS5 代理端口
+
+节点 VPS 的安全组/防火墙需要允许管理端 VPS 访问节点侧 HTTP 代理端口，默认是 `18080`。建议只放行管理端 VPS 的 IP。
+
+任务成功后，节点下一次心跳应显示：
+
+```text
+gost 3.x active
+```
+
+### 3.2 创建代理池
+
+1. 进入“分组”，创建分组。
+2. 进入“节点”，把已同步 GOST 的节点加入分组。
+3. 进入“代理池”，选择分组并配置 HTTP/SOCKS5 入口端口。
+4. 如果节点还没 ready，稍后点击“重启入口”。
+
+测试 HTTP 入口：
+
+```bash
+curl -x http://用户名:密码@管理端IP:HTTP入口端口 https://api.ipify.org
+```
+
+测试 SOCKS5 入口：
+
+```bash
+curl --socks5 用户名:密码@管理端IP:SOCKS5入口端口 https://api.ipify.org
+```
+
 ### GOST 显示 not installed
 
-当前版本不会自动安装 GOST。如果节点上没有 `gost` 命令，面板会显示：
+如果节点上还没有执行“同步节点代理”任务，面板会显示：
 
 ```text
 gost not installed
 ```
 
-这表示 agent 正常，但 GOST 尚未安装。后续需要实现节点端自动安装/升级 GOST 后，代理功能才会闭环。
+这表示 agent 正常，但节点侧 GOST 尚未安装。
 
-## 3. 常见问题
+## 4. 常见问题
 
 ### 节点下载 agent 404
 

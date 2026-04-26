@@ -50,9 +50,14 @@ func (s *Store) load() error {
 	}
 	if len(b) == 0 {
 		s.state = model.State{}
+		s.ensureDefaultsLocked()
 		return s.saveLocked()
 	}
-	return json.Unmarshal(b, &s.state)
+	if err := json.Unmarshal(b, &s.state); err != nil {
+		return err
+	}
+	s.ensureDefaultsLocked()
+	return nil
 }
 
 func (s *Store) Save() error {
@@ -73,7 +78,17 @@ func (s *Store) saveLocked() error {
 	if err := os.WriteFile(tmp, b, 0o600); err != nil {
 		return err
 	}
+	_ = os.Remove(s.path)
 	return os.Rename(tmp, s.path)
+}
+
+func (s *Store) ensureDefaultsLocked() {
+	if s.state.Settings.ProxyUsername == "" {
+		s.state.Settings.ProxyUsername = "proxy"
+	}
+	if s.state.Settings.ProxyPassword == "" {
+		s.state.Settings.ProxyPassword = randomID("pass")
+	}
 }
 
 func (s *Store) Snapshot() model.State {
@@ -241,6 +256,25 @@ func (s *Store) AssignGroups(nodeID string, groupIDs []string) error {
 	return errors.New("node not found")
 }
 
+func (s *Store) UpdateNodePorts(nodeID string, httpPort, socksPort int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i := range s.state.Nodes {
+		if s.state.Nodes[i].ID == nodeID {
+			if httpPort > 0 {
+				s.state.Nodes[i].HTTPPort = httpPort
+			}
+			if socksPort > 0 {
+				s.state.Nodes[i].SocksPort = socksPort
+			}
+			s.state.Nodes[i].ConfigVersion++
+			s.state.Nodes[i].UpdatedAt = time.Now().UTC()
+			return s.saveLocked()
+		}
+	}
+	return errors.New("node not found")
+}
+
 func (s *Store) DeleteNode(nodeID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -289,18 +323,37 @@ func (s *Store) CreatePool(name string, groupIDs []string, httpPort, socksPort i
 		strategy = "round"
 	}
 	p := model.Pool{
-		ID:        randomID("pool"),
-		Name:      name,
-		GroupIDs:  uniqueStrings(groupIDs),
-		HTTPPort:  httpPort,
-		SocksPort: socksPort,
-		Strategy:  strategy,
-		Enabled:   true,
-		CreatedAt: now,
-		UpdatedAt: now,
+		ID:            randomID("pool"),
+		Name:          name,
+		GroupIDs:      uniqueStrings(groupIDs),
+		HTTPPort:      httpPort,
+		SocksPort:     socksPort,
+		Strategy:      strategy,
+		Enabled:       true,
+		RuntimeStatus: "created",
+		CreatedAt:     now,
+		UpdatedAt:     now,
 	}
 	s.state.Pools = append(s.state.Pools, p)
 	return p, s.saveLocked()
+}
+
+func (s *Store) UpdatePoolRuntime(poolID, status, errText string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now().UTC()
+	for i := range s.state.Pools {
+		if s.state.Pools[i].ID == poolID {
+			s.state.Pools[i].RuntimeStatus = status
+			s.state.Pools[i].RuntimeError = errText
+			if status == "running" {
+				s.state.Pools[i].StartedAt = now
+			}
+			s.state.Pools[i].UpdatedAt = now
+			return s.saveLocked()
+		}
+	}
+	return errors.New("pool not found")
 }
 
 func (s *Store) CreateTask(nodeID, taskType, payload string) (model.Task, error) {

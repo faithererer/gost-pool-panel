@@ -3,8 +3,7 @@ services:
     build: .
     container_name: gost-pool-panel
     restart: unless-stopped
-    ports:
-      - "${PANEL_PORT:-3000}:3000"
+    network_mode: host
     environment:
       PANEL_PORT: "3000"
       PANEL_LISTEN: ":3000"

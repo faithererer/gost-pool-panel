@@ -235,13 +235,20 @@ const nodesHTML = `{{define "content"}}
           <input type="hidden" name="node_id" value="{{.ID}}">
           <label>任务</label>
           <select name="task_type">
+            <option value="sync_node_proxy">同步节点代理</option>
             <option value="restart_gost">重启 GOST</option>
             <option value="apply_config">下发配置</option>
             <option value="update_ports">修改端口</option>
             <option value="uninstall_agent">远程卸载 agent</option>
           </select>
+          <div class="row">
+            <div><label>HTTP 端口</label><input name="http_port" value="{{.HTTPPort}}" type="number"></div>
+            <div><label>SOCKS5 端口</label><input name="socks_port" value="{{.SocksPort}}" type="number"></div>
+          </div>
+          <label>GOST 版本</label>
+          <input name="gost_version" value="3.2.6">
           <label>Payload</label>
-          <textarea name="payload" placeholder="JSON 或 GOST 配置文本"></textarea>
+          <textarea name="payload" placeholder="下发配置任务可填写 GOST JSON；同步节点代理任务会自动生成"></textarea>
           <button type="submit">下发</button>
         </form>
         <form method="post" action="/nodes/delete" style="margin-top:10px;" onsubmit="return confirm('确认删除该节点及其任务记录？这不会操作 VPS。');">
@@ -292,8 +299,8 @@ const poolsHTML = `{{define "content"}}
 </div>
 <div style="height:14px"></div>
 <table>
-  <thead><tr><th>名称</th><th>端口</th><th>分组 ID</th><th>状态</th></tr></thead>
-  <tbody>{{range .State.Pools}}<tr><td>{{.Name}}</td><td>HTTP {{.HTTPPort}}<br>SOCKS5 {{.SocksPort}}</td><td>{{join .GroupIDs ", "}}</td><td>{{if .Enabled}}启用{{else}}停用{{end}}</td></tr>{{else}}<tr><td colspan="4">暂无代理池。</td></tr>{{end}}</tbody>
+  <thead><tr><th>名称</th><th>端口</th><th>分组 ID</th><th>状态</th><th>操作</th></tr></thead>
+  <tbody>{{range .State.Pools}}<tr><td>{{.Name}}</td><td>HTTP {{.HTTPPort}}<br>SOCKS5 {{.SocksPort}}</td><td>{{join .GroupIDs ", "}}</td><td>{{if .Enabled}}启用{{else}}停用{{end}}<div class="muted">{{.RuntimeStatus}} {{.RuntimeError}}</div></td><td><form method="post" action="/pools/restart"><input type="hidden" name="pool_id" value="{{.ID}}"><button type="submit">重启入口</button></form></td></tr>{{else}}<tr><td colspan="5">暂无代理池。</td></tr>{{end}}</tbody>
 </table>
 {{end}}`
 

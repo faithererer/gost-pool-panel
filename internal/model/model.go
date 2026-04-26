@@ -60,15 +60,18 @@ type Group struct {
 }
 
 type Pool struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	GroupIDs  []string  `json:"groupIds"`
-	HTTPPort  int       `json:"httpPort"`
-	SocksPort int       `json:"socksPort"`
-	Strategy  string    `json:"strategy"`
-	Enabled   bool      `json:"enabled"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt"`
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	GroupIDs      []string  `json:"groupIds"`
+	HTTPPort      int       `json:"httpPort"`
+	SocksPort     int       `json:"socksPort"`
+	Strategy      string    `json:"strategy"`
+	Enabled       bool      `json:"enabled"`
+	RuntimeStatus string    `json:"runtimeStatus"`
+	RuntimeError  string    `json:"runtimeError"`
+	StartedAt     time.Time `json:"startedAt"`
+	CreatedAt     time.Time `json:"createdAt"`
+	UpdatedAt     time.Time `json:"updatedAt"`
 }
 
 type RegisterToken struct {

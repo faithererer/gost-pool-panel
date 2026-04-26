@@ -22,12 +22,13 @@ import (
 const sessionCookie = "gpp_session"
 
 type Server struct {
-	cfg   Config
-	store *store.Store
+	cfg         Config
+	store       *store.Store
+	poolRuntime *poolRuntimeManager
 }
 
 func NewServer(cfg Config, st *store.Store) *Server {
-	return &Server{cfg: cfg, store: st}
+	return &Server{cfg: cfg, store: st, poolRuntime: newPoolRuntimeManager()}
 }
 
 func (s *Server) Routes() http.Handler {
@@ -144,7 +145,25 @@ func (s *Server) handleFormPost(w http.ResponseWriter, r *http.Request) {
 		}
 		http.Redirect(w, r, "/nodes", http.StatusFound)
 	case "/nodes/tasks":
-		if _, err := s.store.CreateTask(r.FormValue("node_id"), r.FormValue("task_type"), r.FormValue("payload")); err != nil {
+		nodeID := r.FormValue("node_id")
+		taskType := r.FormValue("task_type")
+		payload := r.FormValue("payload")
+		if taskType == "sync_node_proxy" || taskType == "update_ports" {
+			var err error
+			payload, err = s.buildNodeProxyPayload(r)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			httpPort, _ := strconv.Atoi(defaultString(r.FormValue("http_port"), "18080"))
+			socksPort, _ := strconv.Atoi(defaultString(r.FormValue("socks_port"), "18081"))
+			if err := s.store.UpdateNodePorts(nodeID, httpPort, socksPort); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			taskType = "sync_node_proxy"
+		}
+		if _, err := s.store.CreateTask(nodeID, taskType, payload); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -164,8 +183,19 @@ func (s *Server) handleFormPost(w http.ResponseWriter, r *http.Request) {
 	case "/pools":
 		httpPort, _ := strconv.Atoi(r.FormValue("http_port"))
 		socksPort, _ := strconv.Atoi(r.FormValue("socks_port"))
-		if _, err := s.store.CreatePool(r.FormValue("name"), r.Form["group_id"], httpPort, socksPort, r.FormValue("strategy")); err != nil {
+		pool, err := s.store.CreatePool(r.FormValue("name"), r.Form["group_id"], httpPort, socksPort, r.FormValue("strategy"))
+		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		if err := s.restartPoolRuntime(pool.ID); err != nil {
+			http.Redirect(w, r, "/pools", http.StatusFound)
+			return
+		}
+		http.Redirect(w, r, "/pools", http.StatusFound)
+	case "/pools/restart":
+		if err := s.restartPoolRuntime(r.FormValue("pool_id")); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 		http.Redirect(w, r, "/pools", http.StatusFound)
@@ -358,6 +388,32 @@ func (s *Server) installCommand(token, name string) string {
 		cmd += " --name " + shellQuote(name)
 	}
 	return cmd
+}
+
+func (s *Server) buildNodeProxyPayload(r *http.Request) (string, error) {
+	httpPort, _ := strconv.Atoi(defaultString(r.FormValue("http_port"), "18080"))
+	socksPort, _ := strconv.Atoi(defaultString(r.FormValue("socks_port"), "18081"))
+	if httpPort <= 0 && socksPort <= 0 {
+		return "", fmt.Errorf("HTTP 或 SOCKS5 端口至少需要一个")
+	}
+	state := s.store.Snapshot()
+	username := state.Settings.ProxyUsername
+	password := state.Settings.ProxyPassword
+	if username == "" || password == "" {
+		return "", fmt.Errorf("请先在设置中配置全局出口账号密码")
+	}
+	payload := map[string]any{
+		"httpPort":    httpPort,
+		"socksPort":   socksPort,
+		"username":    username,
+		"password":    password,
+		"gostVersion": defaultString(r.FormValue("gost_version"), "3.2.6"),
+	}
+	b, err := json.Marshal(payload)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
 }
 
 func (s *Server) signSession(expires time.Time) string {

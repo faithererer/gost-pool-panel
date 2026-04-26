@@ -1,7 +1,9 @@
 package main
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -16,10 +18,12 @@ import (
 	"strings"
 	"time"
 
+	"gost-pool-panel/internal/gostcfg"
 	"gost-pool-panel/internal/model"
 )
 
-const agentVersion = "0.1.2"
+const agentVersion = "0.2.0"
+const defaultGostVersion = "3.2.6"
 
 type Config struct {
 	Server        string `json:"server"`
@@ -183,10 +187,12 @@ func (a *Agent) pollTasks() error {
 
 func (a *Agent) executeTask(t model.Task) (string, string, string) {
 	switch t.Type {
+	case "sync_node_proxy":
+		return a.syncNodeProxy(t.Payload)
 	case "restart_gost":
 		return runCommand("systemctl", "restart", "gost")
 	case "apply_config":
-		if err := backupAndWrite("/etc/gost/gost.yml", []byte(t.Payload)); err != nil {
+		if err := backupAndWrite("/etc/gost/gost.json", []byte(t.Payload)); err != nil {
 			return model.TaskStatusFailed, "", err.Error()
 		}
 		status, result, errText := runCommand("systemctl", "restart", "gost")
@@ -195,12 +201,150 @@ func (a *Agent) executeTask(t model.Task) (string, string, string) {
 		}
 		return model.TaskStatusSuccess, "gost config applied\n" + result, ""
 	case "update_ports":
-		return model.TaskStatusSuccess, "port update task received; config generator will fill this in next iteration", ""
+		return a.syncNodeProxy(t.Payload)
 	case "uninstall_agent":
 		return model.TaskStatusSuccess, "agent uninstall scheduled; GOST service and /etc/gost will be kept", ""
 	default:
 		return model.TaskStatusFailed, "", "unknown task type: " + t.Type
 	}
+}
+
+type nodeProxyPayload struct {
+	HTTPPort    int    `json:"httpPort"`
+	SocksPort   int    `json:"socksPort"`
+	Username    string `json:"username"`
+	Password    string `json:"password"`
+	GostVersion string `json:"gostVersion"`
+}
+
+func (a *Agent) syncNodeProxy(payload string) (string, string, string) {
+	if os.Geteuid() != 0 {
+		return model.TaskStatusFailed, "", "sync_node_proxy requires root"
+	}
+	var p nodeProxyPayload
+	if payload != "" {
+		if err := json.Unmarshal([]byte(payload), &p); err != nil {
+			return model.TaskStatusFailed, "", "invalid payload: " + err.Error()
+		}
+	}
+	if p.HTTPPort == 0 {
+		p.HTTPPort = 18080
+	}
+	if p.SocksPort == 0 {
+		p.SocksPort = 18081
+	}
+	if p.Username == "" || p.Password == "" {
+		return model.TaskStatusFailed, "", "username and password are required"
+	}
+	if p.GostVersion == "" {
+		p.GostVersion = defaultGostVersion
+	}
+	if err := ensureGostInstalled(p.GostVersion); err != nil {
+		return model.TaskStatusFailed, "", err.Error()
+	}
+	cfg := gostcfg.NodeProxy(p.HTTPPort, p.SocksPort, p.Username, p.Password)
+	b, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return model.TaskStatusFailed, "", err.Error()
+	}
+	if err := backupAndWrite("/etc/gost/gost.json", b); err != nil {
+		return model.TaskStatusFailed, "", err.Error()
+	}
+	if err := writeGostService(); err != nil {
+		return model.TaskStatusFailed, "", err.Error()
+	}
+	if status, result, errText := runCommand("systemctl", "daemon-reload"); status == model.TaskStatusFailed {
+		return status, result, errText
+	}
+	if status, result, errText := runCommand("systemctl", "enable", "gost"); status == model.TaskStatusFailed {
+		return status, result, errText
+	}
+	if status, result, errText := runCommand("systemctl", "restart", "gost"); status == model.TaskStatusFailed {
+		return status, result, errText
+	}
+	return model.TaskStatusSuccess, fmt.Sprintf("GOST proxy synced: http=%d socks5=%d version=%s", p.HTTPPort, p.SocksPort, p.GostVersion), ""
+}
+
+func ensureGostInstalled(version string) error {
+	if _, err := exec.LookPath("gost"); err == nil {
+		return nil
+	}
+	arch := runtime.GOARCH
+	if arch != "amd64" && arch != "arm64" {
+		return fmt.Errorf("unsupported GOST arch: %s", arch)
+	}
+	url := fmt.Sprintf("https://github.com/go-gost/gost/releases/download/v%s/gost_%s_linux_%s.tar.gz", version, version, arch)
+	resp, err := http.Get(url)
+	if err != nil {
+		return fmt.Errorf("download GOST failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("download GOST failed: http %d from %s", resp.StatusCode, url)
+	}
+	gz, err := gzip.NewReader(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read GOST archive failed: %w", err)
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+	tmpPath := fmt.Sprintf("/tmp/gost-%s-%d", version, time.Now().UTC().UnixNano())
+	defer os.Remove(tmpPath)
+	found := false
+	for {
+		hdr, err := tr.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("extract GOST archive failed: %w", err)
+		}
+		if hdr.FileInfo().IsDir() || filepath.Base(hdr.Name) != "gost" {
+			continue
+		}
+		f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+		if err != nil {
+			return err
+		}
+		if _, err := io.Copy(f, tr); err != nil {
+			_ = f.Close()
+			return err
+		}
+		if err := f.Close(); err != nil {
+			return err
+		}
+		found = true
+		break
+	}
+	if !found {
+		return errors.New("GOST binary not found in release archive")
+	}
+	if err := os.MkdirAll("/usr/local/bin", 0o755); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, "/usr/local/bin/gost"); err != nil {
+		return err
+	}
+	return os.Chmod("/usr/local/bin/gost", 0o755)
+}
+
+func writeGostService() error {
+	unit := `[Unit]
+Description=GOST Proxy Service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/gost -C /etc/gost/gost.json
+Restart=always
+RestartSec=3
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target
+`
+	return os.WriteFile("/etc/systemd/system/gost.service", []byte(unit), 0o644)
 }
 
 func (a *Agent) scheduleSelfUninstall() error {
