@@ -22,15 +22,17 @@ export function proxyURL(protocol: ProxyProtocol, host: string, port: number) {
   return `${protocol}://${formatProxyHost(host)}:${port}`;
 }
 
+export function authenticatedProxyURL(protocol: ProxyProtocol, host: string, port: number, settings: Settings) {
+  const username = settings.proxyUsername?.trim();
+  if (!username) return proxyURL(protocol, host, port);
+  const password = settings.proxyPassword || "PASSWORD";
+  return `${protocol}://${encodeURIComponent(username)}:${encodeURIComponent(password)}@${formatProxyHost(host)}:${port}`;
+}
+
 export function quoteForCurl(value: string) {
   return `"${value.replace(/(["\\])/g, "\\$1")}"`;
 }
 
-export function proxyAuthArg(settings: Settings) {
-  if (!settings.proxyUsername) return "";
-  return `--proxy-user ${quoteForCurl(`${settings.proxyUsername}:${settings.proxyPassword || "PASSWORD"}`)} `;
-}
-
 export function proxyTestCommand(protocol: ProxyProtocol, host: string, port: number, settings: Settings) {
-  return `curl -x ${proxyURL(protocol, host, port)} ${proxyAuthArg(settings)}https://api64.ipify.org`;
+  return `curl -x ${quoteForCurl(authenticatedProxyURL(protocol, host, port, settings))} https://api64.ipify.org`;
 }

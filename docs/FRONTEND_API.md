@@ -205,7 +205,7 @@ Returns `State`. This is the preferred first request after login.
 Response:
 
 ```json
-{ "panel": "0.3.5", "agent": "0.3.5" }
+{ "panel": "0.3.6", "agent": "0.3.5" }
 ```
 
 Use this to mark nodes whose `agentVersion !== versions.agent` as upgrade candidates.
@@ -615,8 +615,8 @@ Features:
 - Copy test commands:
 
 ```bash
-curl -x http://HOST:HTTP_PORT -U 'USER:PASS' https://api64.ipify.org
-curl -x socks5h://HOST:SOCKS_PORT -U 'USER:PASS' https://api64.ipify.org
+curl -x "http://USER:PASS@HOST:HTTP_PORT" https://api64.ipify.org
+curl -x "socks5h://USER:PASS@HOST:SOCKS_PORT" https://api64.ipify.org
 ```
 
 - For IPv6 panel hosts, use bracketed addresses: `[IPv6]:PORT`.

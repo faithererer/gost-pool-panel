@@ -10,7 +10,7 @@ import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { Input } from '../components/ui/input';
 import { Modal } from '../components/ui/modal';
 import { copyText } from '../lib/clipboard';
-import { ProxyProtocol, proxyTestCommand, proxyURL } from '../lib/proxy';
+import { authenticatedProxyURL, ProxyProtocol, proxyTestCommand } from '../lib/proxy';
 
 type SyncForm = {
   node: Node;
@@ -149,7 +149,7 @@ export default function Nodes() {
       notify({ type: 'error', title: '缺少节点公网 IP', message: '面板还没有收到该节点的公网地址。' });
       return;
     }
-    await copyProxyText(proxyURL(protocol, node.publicIp, port), `${node.name} ${proxyLabel(protocol)} 地址已复制`);
+    await copyProxyText(authenticatedProxyURL(protocol, node.publicIp, port, state.settings), `${node.name} ${proxyLabel(protocol)} 地址已复制`);
   };
 
   const copyDirectTestCommand = async (node: Node, protocol: ProxyProtocol, port: number) => {
@@ -275,12 +275,12 @@ export default function Nodes() {
                     {node.publicIp && directEndpoints.length > 0 ? (
                       <div className="space-y-2">
                         {directEndpoints.map((endpoint) => {
-                          const address = proxyURL(endpoint.protocol, node.publicIp, endpoint.port);
+                          const address = authenticatedProxyURL(endpoint.protocol, node.publicIp, endpoint.port, state.settings);
                           return (
                             <div key={endpoint.protocol} className="grid grid-cols-[52px_minmax(0,1fr)_32px_74px] items-center gap-2 text-xs">
                               <span className="text-muted-foreground">{endpoint.label}</span>
                               <code className="truncate rounded bg-muted px-2 py-1 font-mono text-foreground" title={address}>{address}</code>
-                              <Button variant="ghost" size="icon" className="h-8 w-8" title="复制代理地址" onClick={() => copyDirectAddress(node, endpoint.protocol, endpoint.port)}>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" title="复制含认证代理地址" onClick={() => copyDirectAddress(node, endpoint.protocol, endpoint.port)}>
                                 <Copy className="h-3.5 w-3.5" />
                               </Button>
                               <Button variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => copyDirectTestCommand(node, endpoint.protocol, endpoint.port)}>

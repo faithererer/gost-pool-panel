@@ -9,7 +9,7 @@ import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { Input } from '../components/ui/input';
 import { Modal } from '../components/ui/modal';
 import { copyText } from '../lib/clipboard';
-import { hostFromBaseURL, ProxyProtocol, proxyTestCommand, proxyURL } from '../lib/proxy';
+import { authenticatedProxyURL, hostFromBaseURL, ProxyProtocol, proxyTestCommand } from '../lib/proxy';
 
 export default function Pools() {
   const { state, refreshState, notify } = useAppContext();
@@ -105,7 +105,7 @@ export default function Pools() {
   };
 
   const copyPoolAddress = async (protocol: ProxyProtocol, port: number) => {
-    await copyProxyText(proxyURL(protocol, poolHost, port), `${protocol === 'http' ? 'HTTP' : 'SOCKS5'} 入口地址已复制`);
+    await copyProxyText(authenticatedProxyURL(protocol, poolHost, port, state.settings), `${protocol === 'http' ? 'HTTP' : 'SOCKS5'} 入口地址已复制`);
   };
 
   const copyTestCommand = async (protocol: ProxyProtocol, port: number) => {
@@ -181,12 +181,12 @@ export default function Pools() {
                   <div className="space-y-2 border-t border-border pt-4">
                     <div className="text-xs font-medium text-muted-foreground">代理池入口</div>
                     {endpoints.map((endpoint) => {
-                      const address = proxyURL(endpoint.protocol, poolHost, endpoint.port);
+                      const address = authenticatedProxyURL(endpoint.protocol, poolHost, endpoint.port, state.settings);
                       return (
                         <div key={endpoint.protocol} className="grid grid-cols-[52px_minmax(0,1fr)_32px_74px] items-center gap-2 text-xs">
                           <span className="text-muted-foreground">{endpoint.label}</span>
                           <code className="truncate rounded bg-muted px-2 py-1 font-mono text-foreground" title={address}>{address}</code>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" title="复制入口地址" onClick={() => copyPoolAddress(endpoint.protocol, endpoint.port)}>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" title="复制含认证入口地址" onClick={() => copyPoolAddress(endpoint.protocol, endpoint.port)}>
                             <Copy className="h-3.5 w-3.5" />
                           </Button>
                           <Button variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => copyTestCommand(endpoint.protocol, endpoint.port)}>
