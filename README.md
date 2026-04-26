@@ -142,6 +142,7 @@ ghcr.io/YOUR_NAME/gost-pool-panel:v0.1.0
 - 全局出口代理账号密码。
 - 节点流量字段和 API。
 - 下发任务骨架。
+- 远程卸载 agent：任务回报成功后，节点端会删除 `gost-pool-agent.service` 和 `/opt/gost-pool-agent`，不会停止或删除 GOST。
 
 ## 下一步
 

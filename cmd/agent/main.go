@@ -159,6 +159,13 @@ func (a *Agent) pollTasks() error {
 		req := map[string]string{"status": status, "result": result, "error": errText}
 		if err := a.postJSON("/api/agent/tasks/"+t.ID+"/result", a.authHeader(), req, nil); err != nil {
 			log.Printf("report task %s failed: %v", t.ID, err)
+			continue
+		}
+		if t.Type == "uninstall_agent" && status == model.TaskStatusSuccess {
+			if err := a.scheduleSelfUninstall(); err != nil {
+				log.Printf("schedule self uninstall failed: %v", err)
+			}
+			return nil
 		}
 	}
 	return nil
@@ -180,10 +187,45 @@ func (a *Agent) executeTask(t model.Task) (string, string, string) {
 	case "update_ports":
 		return model.TaskStatusSuccess, "port update task received; config generator will fill this in next iteration", ""
 	case "uninstall_agent":
-		return model.TaskStatusSuccess, "uninstall task acknowledged; agent removal script will be implemented with confirmation flow", ""
+		return model.TaskStatusSuccess, "agent uninstall scheduled; GOST service and /etc/gost will be kept", ""
 	default:
 		return model.TaskStatusFailed, "", "unknown task type: " + t.Type
 	}
+}
+
+func (a *Agent) scheduleSelfUninstall() error {
+	installDir := filepath.Dir(a.cfgPath)
+	if installDir == "." || installDir == "/" {
+		installDir = "/opt/gost-pool-agent"
+	}
+	scriptPath := fmt.Sprintf("/tmp/gost-pool-agent-uninstall-%d.sh", time.Now().UTC().Unix())
+	script := fmt.Sprintf(`#!/usr/bin/env sh
+set -eu
+LOG="/tmp/gost-pool-agent-uninstall.log"
+{
+  echo "[gost-pool-agent] uninstall started at $(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)"
+  systemctl disable --now gost-pool-agent.service 2>/dev/null || true
+  rm -f /etc/systemd/system/gost-pool-agent.service
+  systemctl daemon-reload 2>/dev/null || true
+  rm -rf %s
+  echo "[gost-pool-agent] uninstall finished; GOST service and /etc/gost were kept"
+} >> "$LOG" 2>&1
+rm -f "$0"
+`, shellQuote(installDir))
+	if err := os.WriteFile(scriptPath, []byte(script), 0o700); err != nil {
+		return err
+	}
+
+	if _, errText, err := runCommandWithError("systemd-run", "--unit", "gost-pool-agent-uninstall", "--description", "Uninstall GOST Pool Agent", "--on-active=2s", "/bin/sh", scriptPath); err == nil {
+		return nil
+	} else {
+		log.Printf("systemd-run unavailable, falling back to nohup: %s", errText)
+	}
+
+	cmd := exec.Command("nohup", "/bin/sh", "-c", "sleep 2; /bin/sh "+shellQuote(scriptPath))
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	return cmd.Start()
 }
 
 func (a *Agent) authHeader() string {
@@ -260,6 +302,15 @@ func runCommand(name string, args ...string) (string, string, string) {
 	return model.TaskStatusSuccess, string(out), ""
 }
 
+func runCommandWithError(name string, args ...string) (string, string, error) {
+	cmd := exec.Command(name, args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(out), err.Error(), err
+	}
+	return string(out), "", nil
+}
+
 func commandOutput(name string, args ...string) string {
 	cmd := exec.Command(name, args...)
 	out, err := cmd.CombinedOutput()
@@ -295,4 +346,8 @@ func getenv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func shellQuote(v string) string {
+	return "'" + strings.ReplaceAll(v, "'", "'\"'\"'") + "'"
 }

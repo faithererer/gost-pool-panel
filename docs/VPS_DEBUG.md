@@ -58,6 +58,19 @@ systemctl status gost-pool-agent
 journalctl -u gost-pool-agent -f
 ```
 
+远程卸载 agent 后，面板会先收到任务成功结果，然后节点端会在后台删除：
+
+```text
+/etc/systemd/system/gost-pool-agent.service
+/opt/gost-pool-agent
+```
+
+卸载不会停止、禁用或删除 GOST 服务，也不会删除 `/etc/gost`。卸载日志在：
+
+```bash
+/tmp/gost-pool-agent-uninstall.log
+```
+
 ## 3. 常见问题
 
 ### 节点下载 agent 404

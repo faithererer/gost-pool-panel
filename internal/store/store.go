@@ -312,6 +312,16 @@ func (s *Store) FinishTask(nodeID, taskID, status, result, errText string) error
 			t.Error = errText
 			t.FinishedAt = now
 			t.UpdatedAt = now
+			if t.Type == "uninstall_agent" && status == model.TaskStatusSuccess {
+				for j := range s.state.Nodes {
+					if s.state.Nodes[j].ID == nodeID {
+						s.state.Nodes[j].Status = model.NodeStatusOffline
+						s.state.Nodes[j].GostStatus = "agent uninstalled"
+						s.state.Nodes[j].UpdatedAt = now
+						break
+					}
+				}
+			}
 			return s.saveLocked()
 		}
 	}
