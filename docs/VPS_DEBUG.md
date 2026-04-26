@@ -68,6 +68,8 @@ admin / 你设置的 PANEL_ADMIN_PASSWORD
 
 如果节点已经注册过，安装脚本会检测 `/opt/gost-pool-agent/agent.json` 里的节点身份，并按原地升级处理，不会再次消耗注册 token。
 
+agent `0.3.3` 起支持管理端远程升级。进入“节点”，任务选择“升级 agent”并下发；节点会从管理端 `/downloads/` 拉取同架构最新 agent，回传任务成功后自动重启 `gost-pool-agent.service`。老版本 agent 不认识这个任务，需要先手动执行一次安装命令升级到 `0.3.3` 或更新版本。
+
 确认管理端容器里是否已经是新版本：
 
 ```bash
@@ -147,13 +149,13 @@ gost 3.x active
 测试 HTTP 入口：
 
 ```bash
-curl -x http://管理端IP:HTTP入口端口 -U '用户名:密码' https://api.ipify.org
+curl -x http://管理端IP:HTTP入口端口 -U '用户名:密码' https://api64.ipify.org
 ```
 
 测试 SOCKS5 入口：
 
 ```bash
-curl -x socks5h://管理端IP:SOCKS5入口端口 -U '用户名:密码' https://api.ipify.org
+curl -x socks5h://管理端IP:SOCKS5入口端口 -U '用户名:密码' https://api64.ipify.org
 ```
 
 代理池页面会按照当前设置直接生成这两条命令，可以优先复制页面里的命令测试。
@@ -170,6 +172,8 @@ curl -x http://[2600:1700:abcd::1234]:28080 -U '用户名:密码' https://api.ip
 curl -x http://管理端IP:HTTP入口端口 -U '用户名:密码' https://api64.ipify.org
 curl -x http://管理端IP:HTTP入口端口 -U '用户名:密码' https://api6.ipify.org
 ```
+
+“同步节点代理”任务成功结果里需要看到 `resolver=ipv6`。如果只看到 `egress=IPv6!`，说明节点端 agent 还不是包含 IPv6 resolver 修复的版本。
 
 ### GOST 显示 not installed
 

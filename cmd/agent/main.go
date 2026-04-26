@@ -191,6 +191,12 @@ func (a *Agent) pollTasks() error {
 			}
 			return nil
 		}
+		if t.Type == "upgrade_agent" && status == model.TaskStatusSuccess {
+			if err := a.scheduleAgentRestart(); err != nil {
+				log.Printf("schedule agent restart failed: %v", err)
+			}
+			return nil
+		}
 	}
 	return nil
 }
@@ -212,10 +218,84 @@ func (a *Agent) executeTask(t model.Task) (string, string, string) {
 		return model.TaskStatusSuccess, "gost config applied\n" + result, ""
 	case "update_ports":
 		return a.syncNodeProxy(t.Payload)
+	case "upgrade_agent":
+		return a.upgradeAgent()
 	case "uninstall_agent":
 		return model.TaskStatusSuccess, "agent uninstall scheduled; GOST service and /etc/gost will be kept", ""
 	default:
 		return model.TaskStatusFailed, "", "unknown task type: " + t.Type
+	}
+}
+
+func (a *Agent) upgradeAgent() (string, string, string) {
+	if os.Geteuid() != 0 {
+		return model.TaskStatusFailed, "", "upgrade_agent requires root"
+	}
+	bin, err := agentBinaryName()
+	if err != nil {
+		return model.TaskStatusFailed, "", err.Error()
+	}
+	installDir := filepath.Dir(a.cfgPath)
+	if installDir == "." || installDir == "/" {
+		installDir = "/opt/gost-pool-agent"
+	}
+	if err := os.MkdirAll(installDir, 0o700); err != nil {
+		return model.TaskStatusFailed, "", err.Error()
+	}
+	url := strings.TrimRight(a.cfg.Server, "/") + "/downloads/" + bin
+	resp, err := a.client.Get(url)
+	if err != nil {
+		return model.TaskStatusFailed, "", fmt.Sprintf("download agent failed from %s: %v", url, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return model.TaskStatusFailed, "", fmt.Sprintf("download agent failed from %s: http %d", url, resp.StatusCode)
+	}
+	tmp, err := os.CreateTemp(installDir, "gost-pool-agent.upgrade.*")
+	if err != nil {
+		return model.TaskStatusFailed, "", err.Error()
+	}
+	tmpPath := tmp.Name()
+	keepTemp := false
+	defer func() {
+		if !keepTemp {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if _, err := io.Copy(tmp, resp.Body); err != nil {
+		_ = tmp.Close()
+		return model.TaskStatusFailed, "", err.Error()
+	}
+	if err := tmp.Close(); err != nil {
+		return model.TaskStatusFailed, "", err.Error()
+	}
+	if err := os.Chmod(tmpPath, 0o755); err != nil {
+		return model.TaskStatusFailed, "", err.Error()
+	}
+	versionOut, errText, err := runCommandWithError(tmpPath, "--version")
+	if err != nil {
+		return model.TaskStatusFailed, "", fmt.Sprintf("downloaded agent is not executable: %s %v", errText, err)
+	}
+	newVersion := strings.TrimSpace(versionOut)
+	if newVersion == "" {
+		newVersion = "unknown"
+	}
+	target := filepath.Join(installDir, "gost-pool-agent")
+	if err := os.Rename(tmpPath, target); err != nil {
+		return model.TaskStatusFailed, "", err.Error()
+	}
+	keepTemp = true
+	return model.TaskStatusSuccess, fmt.Sprintf("agent upgraded to %s from %s; restart scheduled after task result is reported", newVersion, url), ""
+}
+
+func agentBinaryName() (string, error) {
+	switch runtime.GOARCH {
+	case "amd64":
+		return "gost-pool-agent-linux-amd64", nil
+	case "arm64":
+		return "gost-pool-agent-linux-arm64", nil
+	default:
+		return "", fmt.Errorf("unsupported agent arch: %s", runtime.GOARCH)
 	}
 }
 
@@ -531,6 +611,19 @@ rm -f "$0"
 	}
 
 	cmd := exec.Command("nohup", "/bin/sh", "-c", "sleep 2; /bin/sh "+shellQuote(scriptPath))
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	return cmd.Start()
+}
+
+func (a *Agent) scheduleAgentRestart() error {
+	if _, errText, err := runCommandWithError("systemd-run", "--unit", "gost-pool-agent-upgrade-restart", "--description", "Restart GOST Pool Agent after upgrade", "--on-active=2s", "systemctl", "restart", "gost-pool-agent.service"); err == nil {
+		return nil
+	} else {
+		log.Printf("systemd-run unavailable, falling back to nohup: %s", errText)
+	}
+
+	cmd := exec.Command("nohup", "/bin/sh", "-c", "sleep 2; systemctl restart gost-pool-agent.service")
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 	return cmd.Start()

@@ -1,4 +1,4 @@
 package buildinfo
 
-const PanelVersion = "0.3.1"
-const AgentVersion = "0.3.1"
+const PanelVersion = "0.3.3"
+const AgentVersion = "0.3.3"

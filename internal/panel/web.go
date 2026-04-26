@@ -248,6 +248,7 @@ const nodesHTML = `{{define "content"}}
             <option value="restart_gost">重启 GOST</option>
             <option value="apply_config">下发配置</option>
             <option value="update_ports">修改端口</option>
+            <option value="upgrade_agent">升级 agent</option>
             <option value="uninstall_agent">远程卸载 agent</option>
           </select>
           <div class="row">
@@ -330,8 +331,8 @@ const poolsHTML = `{{define "content"}}
       <td>{{join .GroupIDs ", "}}</td>
       <td>{{if .Enabled}}启用{{else}}停用{{end}}<div class="muted">{{.RuntimeStatus}} {{.RuntimeError}}</div></td>
       <td>
-        {{if gt .HTTPPort 0}}<pre>curl -x http://{{proxyAddr $.BaseURL .HTTPPort}} -U {{$auth}} https://api.ipify.org</pre>{{end}}
-        {{if gt .SocksPort 0}}<pre>curl -x socks5h://{{proxyAddr $.BaseURL .SocksPort}} -U {{$auth}} https://api.ipify.org</pre>{{end}}
+        {{if gt .HTTPPort 0}}<pre>curl -x http://{{proxyAddr $.BaseURL .HTTPPort}} -U {{$auth}} https://api64.ipify.org</pre>{{end}}
+        {{if gt .SocksPort 0}}<pre>curl -x socks5h://{{proxyAddr $.BaseURL .SocksPort}} -U {{$auth}} https://api64.ipify.org</pre>{{end}}
       </td>
       <td><form method="post" action="/pools/restart"><input type="hidden" name="pool_id" value="{{.ID}}"><button type="submit">重启入口</button></form></td>
     </tr>
