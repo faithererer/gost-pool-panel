@@ -130,6 +130,8 @@ ghcr.io/YOUR_NAME/gost-pool-panel:v0.1.0
 
 节点端不需要安装 Go、Node.js 或 Python。
 
+重复执行一键安装命令会覆盖 agent 二进制并重启 `gost-pool-agent.service`，可用于升级节点端 agent。
+
 ## 当前功能
 
 - 管理端登录。
@@ -143,6 +145,7 @@ ghcr.io/YOUR_NAME/gost-pool-panel:v0.1.0
 - 节点流量字段和 API。
 - 下发任务骨架。
 - 远程卸载 agent：任务回报成功后，节点端会删除 `gost-pool-agent.service` 和 `/opt/gost-pool-agent`，不会停止或删除 GOST。
+- 节点记录删除：面板支持删除单个节点记录，也支持清理所有 `agent uninstalled` 节点及其任务记录。
 
 ## 下一步
 
@@ -150,5 +153,4 @@ ghcr.io/YOUR_NAME/gost-pool-panel:v0.1.0
 - 管理端中心 GOST 入口进程管理。
 - 节点端安装/升级 GOST。
 - 节点端端口变更任务落地。
-- 远程卸载 agent 的确认和执行流程。
 - 更准确的流量统计。

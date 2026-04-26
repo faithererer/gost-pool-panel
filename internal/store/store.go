@@ -241,6 +241,46 @@ func (s *Store) AssignGroups(nodeID string, groupIDs []string) error {
 	return errors.New("node not found")
 }
 
+func (s *Store) DeleteNode(nodeID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	found := false
+	nodes := s.state.Nodes[:0]
+	for _, n := range s.state.Nodes {
+		if n.ID == nodeID {
+			found = true
+			continue
+		}
+		nodes = append(nodes, n)
+	}
+	if !found {
+		return errors.New("node not found")
+	}
+	s.state.Nodes = nodes
+	s.state.Tasks = filterTasks(s.state.Tasks, map[string]bool{nodeID: true})
+	return s.saveLocked()
+}
+
+func (s *Store) DeleteUninstalledNodes() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	removed := map[string]bool{}
+	nodes := s.state.Nodes[:0]
+	for _, n := range s.state.Nodes {
+		if n.GostStatus == "agent uninstalled" {
+			removed[n.ID] = true
+			continue
+		}
+		nodes = append(nodes, n)
+	}
+	if len(removed) == 0 {
+		return 0, nil
+	}
+	s.state.Nodes = nodes
+	s.state.Tasks = filterTasks(s.state.Tasks, removed)
+	return len(removed), s.saveLocked()
+}
+
 func (s *Store) CreatePool(name string, groupIDs []string, httpPort, socksPort int, strategy string) (model.Pool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -372,6 +412,17 @@ func uniqueStrings(values []string) []string {
 		}
 		seen[v] = true
 		out = append(out, v)
+	}
+	return out
+}
+
+func filterTasks(tasks []model.Task, removedNodeIDs map[string]bool) []model.Task {
+	out := tasks[:0]
+	for _, t := range tasks {
+		if removedNodeIDs[t.NodeID] {
+			continue
+		}
+		out = append(out, t)
 	}
 	return out
 }

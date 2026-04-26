@@ -149,6 +149,18 @@ func (s *Server) handleFormPost(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		http.Redirect(w, r, "/tasks", http.StatusFound)
+	case "/nodes/delete":
+		if err := s.store.DeleteNode(r.FormValue("node_id")); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		http.Redirect(w, r, "/nodes", http.StatusFound)
+	case "/nodes/cleanup-uninstalled":
+		if _, err := s.store.DeleteUninstalledNodes(); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		http.Redirect(w, r, "/nodes", http.StatusFound)
 	case "/pools":
 		httpPort, _ := strconv.Atoi(r.FormValue("http_port"))
 		socksPort, _ := strconv.Atoi(r.FormValue("socks_port"))
@@ -426,6 +438,7 @@ func renderTemplate(w http.ResponseWriter, title string, data any, body string) 
 		"formatBytes": formatBytes,
 		"contains":    contains,
 		"join":        strings.Join,
+		"gostText":    gostText,
 	}
 	t := template.Must(template.New("page").Funcs(funcs).Parse(baseHTML + body))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -461,4 +474,22 @@ func contains(values []string, needle string) bool {
 		}
 	}
 	return false
+}
+
+func gostText(version, status string) string {
+	version = strings.TrimSpace(version)
+	status = strings.TrimSpace(status)
+	if version == "" {
+		version = "not installed"
+	}
+	if status == "" {
+		status = "unknown"
+	}
+	if version == "not installed" && status == "not installed" {
+		return "not installed"
+	}
+	if version == status {
+		return version
+	}
+	return strings.TrimSpace(version + " " + status)
 }

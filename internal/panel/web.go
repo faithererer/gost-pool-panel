@@ -105,6 +105,7 @@ const baseHTML = `{{define "base"}}
     .row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
     button, .button { display: inline-flex; border: 0; background: #155eef; color: #fff; padding: 9px 12px; border-radius: 6px; font: inherit; cursor: pointer; align-items: center; justify-content: center; }
     .button.secondary, button.secondary { background: #344054; }
+    button.danger { background: #b42318; }
     .muted { color: #667085; font-size: 13px; }
     .pill { display: inline-flex; padding: 3px 8px; border-radius: 999px; font-size: 12px; background: #eef4ff; color: #155eef; }
     .online { background: #ecfdf3; color: #067647; }
@@ -200,6 +201,13 @@ const tokensHTML = `{{define "content"}}
 {{end}}`
 
 const nodesHTML = `{{define "content"}}
+<div class="card" style="margin-bottom:14px;">
+  <h2>节点清理</h2>
+  <p class="muted">远程卸载成功后的节点会标记为 agent uninstalled。这里可以清掉这些历史节点和它们关联的任务记录。</p>
+  <form method="post" action="/nodes/cleanup-uninstalled" onsubmit="return confirm('确认清理所有已卸载节点及其任务记录？');">
+    <button class="secondary" type="submit">清理已卸载节点</button>
+  </form>
+</div>
 <table>
   <thead><tr><th>节点</th><th>状态</th><th>系统</th><th>端口</th><th>分组</th><th>流量</th><th>操作</th></tr></thead>
   <tbody>
@@ -208,7 +216,7 @@ const nodesHTML = `{{define "content"}}
     <tr>
       <td><strong>{{.Name}}</strong><div class="muted">{{.ID}}<br>{{.PublicIP}} {{.Hostname}}</div></td>
       <td><span class="pill {{.Status}}">{{.Status}}</span><div class="muted">{{formatTime .LastSeenAt}}</div></td>
-      <td>{{.OS}}<div class="muted">{{.Arch}} agent {{.AgentVersion}}<br>gost {{.GostVersion}} {{.GostStatus}}</div></td>
+      <td>{{.OS}}<div class="muted">{{.Arch}} agent {{.AgentVersion}}<br>gost {{gostText .GostVersion .GostStatus}}</div></td>
       <td>HTTP {{.HTTPPort}}<br>SOCKS5 {{.SocksPort}}</td>
       <td>
         <form method="post" action="/nodes/groups">
@@ -235,6 +243,10 @@ const nodesHTML = `{{define "content"}}
           <label>Payload</label>
           <textarea name="payload" placeholder="JSON 或 GOST 配置文本"></textarea>
           <button type="submit">下发</button>
+        </form>
+        <form method="post" action="/nodes/delete" style="margin-top:10px;" onsubmit="return confirm('确认删除该节点及其任务记录？这不会操作 VPS。');">
+          <input type="hidden" name="node_id" value="{{.ID}}">
+          <button class="danger" type="submit">删除记录</button>
         </form>
       </td>
     </tr>
@@ -382,6 +394,7 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable --now "$SERVICE_NAME"
+systemctl enable "$SERVICE_NAME"
+systemctl restart "$SERVICE_NAME"
 echo "Agent installed. Check status: systemctl status $SERVICE_NAME"
 `

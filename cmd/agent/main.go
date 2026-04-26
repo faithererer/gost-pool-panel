@@ -19,7 +19,7 @@ import (
 	"gost-pool-panel/internal/model"
 )
 
-const agentVersion = "0.1.0"
+const agentVersion = "0.1.2"
 
 type Config struct {
 	Server        string `json:"server"`
@@ -65,6 +65,16 @@ func main() {
 	defer ticker.Stop()
 	for {
 		if err := a.heartbeat(); err != nil {
+			if isUnauthorized(err) {
+				log.Printf("heartbeat unauthorized, trying to re-register with current register token")
+				a.cfg.NodeID = ""
+				a.cfg.AgentToken = ""
+				if regErr := a.register(); regErr != nil {
+					log.Printf("re-register failed: %v", regErr)
+				}
+				<-ticker.C
+				continue
+			}
 			log.Printf("heartbeat failed: %v", err)
 		}
 		if err := a.pollTasks(); err != nil {
@@ -120,7 +130,7 @@ func (a *Agent) register() error {
 		"os":           linuxPrettyName(),
 		"arch":         runtime.GOARCH,
 		"agentVersion": agentVersion,
-		"gostVersion":  commandOutput("gost", "-V"),
+		"gostVersion":  gostVersion(),
 		"gostStatus":   systemctlStatus("gost"),
 	}
 	var resp struct {
@@ -142,7 +152,7 @@ func (a *Agent) heartbeat() error {
 		"os":           linuxPrettyName(),
 		"arch":         runtime.GOARCH,
 		"agentVersion": agentVersion,
-		"gostVersion":  commandOutput("gost", "-V"),
+		"gostVersion":  gostVersion(),
 		"gostStatus":   systemctlStatus("gost"),
 	}
 	var resp model.Node
@@ -280,6 +290,13 @@ func decodeResponse(resp *http.Response, out any) error {
 	return json.Unmarshal(b, out)
 }
 
+func isUnauthorized(err error) bool {
+	if err == nil {
+		return false
+	}
+	return strings.Contains(err.Error(), "http 401:")
+}
+
 func backupAndWrite(path string, content []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
@@ -320,8 +337,44 @@ func commandOutput(name string, args ...string) string {
 	return strings.TrimSpace(string(out))
 }
 
+func gostVersion() string {
+	if _, err := exec.LookPath("gost"); err != nil {
+		return "not installed"
+	}
+	out, errText, err := runCommandWithError("gost", "-V")
+	version := strings.TrimSpace(out)
+	if version != "" {
+		return version
+	}
+	if err == nil {
+		return "installed"
+	}
+	out, errText, err = runCommandWithError("gost", "-version")
+	version = strings.TrimSpace(out)
+	if version != "" {
+		return version
+	}
+	if err == nil {
+		return "installed"
+	}
+	if errText != "" {
+		return "installed"
+	}
+	return "unknown"
+}
+
 func systemctlStatus(service string) string {
-	out := commandOutput("systemctl", "is-active", service)
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		return "systemctl unavailable"
+	}
+	out, _, err := runCommandWithError("systemctl", "is-active", service)
+	out = strings.TrimSpace(out)
+	if out != "" {
+		return out
+	}
+	if err != nil {
+		return "not installed"
+	}
 	if out == "" {
 		return "unknown"
 	}

@@ -51,6 +51,8 @@ admin / 你设置的 PANEL_ADMIN_PASSWORD
 - 创建 `gost-pool-agent.service`。
 - 启动 agent。
 
+重复执行一键安装命令会覆盖 agent 并重启 `gost-pool-agent.service`，可以用来升级节点端 agent。升级后面板里应能看到新的 agent 版本。
+
 查看节点 agent：
 
 ```bash
@@ -70,6 +72,20 @@ journalctl -u gost-pool-agent -f
 ```bash
 /tmp/gost-pool-agent-uninstall.log
 ```
+
+面板的“节点”页支持删除单个节点记录，也支持清理所有 `agent uninstalled` 节点及其任务记录。这个删除只清理面板数据，不会再操作 VPS。
+
+如果误删了仍在运行的节点记录，在面板重新生成 token，并在该 VPS 上重新执行一键安装命令。新版 agent 收到 401 后会使用当前安装命令里的 token 重新注册。
+
+### GOST 显示 not installed
+
+当前版本不会自动安装 GOST。如果节点上没有 `gost` 命令，面板会显示：
+
+```text
+gost not installed
+```
+
+这表示 agent 正常，但 GOST 尚未安装。后续需要实现节点端自动安装/升级 GOST 后，代理功能才会闭环。
 
 ## 3. 常见问题
 
