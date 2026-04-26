@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,7 +24,7 @@ import (
 	"gost-pool-panel/internal/model"
 )
 
-const agentVersion = "0.2.0"
+const agentVersion = "0.3.0"
 const defaultGostVersion = "3.2.6"
 
 type Config struct {
@@ -217,6 +219,8 @@ type nodeProxyPayload struct {
 	Username    string `json:"username"`
 	Password    string `json:"password"`
 	GostVersion string `json:"gostVersion"`
+	EgressMode  string `json:"egressMode"`
+	EgressIface string `json:"egressInterface"`
 }
 
 func (a *Agent) syncNodeProxy(payload string) (string, string, string) {
@@ -244,7 +248,11 @@ func (a *Agent) syncNodeProxy(payload string) (string, string, string) {
 	if err := ensureGostInstalled(p.GostVersion); err != nil {
 		return model.TaskStatusFailed, "", err.Error()
 	}
-	cfg := gostcfg.NodeProxy(p.HTTPPort, p.SocksPort, p.Username, p.Password)
+	egressInterface, err := resolveEgressInterface(p.EgressMode, p.EgressIface)
+	if err != nil {
+		return model.TaskStatusFailed, "", err.Error()
+	}
+	cfg := gostcfg.NodeProxy(p.HTTPPort, p.SocksPort, p.Username, p.Password, egressInterface)
 	b, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return model.TaskStatusFailed, "", err.Error()
@@ -264,7 +272,119 @@ func (a *Agent) syncNodeProxy(payload string) (string, string, string) {
 	if status, result, errText := runCommand("systemctl", "restart", "gost"); status == model.TaskStatusFailed {
 		return status, result, errText
 	}
-	return model.TaskStatusSuccess, fmt.Sprintf("GOST proxy synced: http=%d socks5=%d version=%s", p.HTTPPort, p.SocksPort, p.GostVersion), ""
+	if egressInterface == "" {
+		egressInterface = "auto"
+	}
+	return model.TaskStatusSuccess, fmt.Sprintf("GOST proxy synced: http=%d socks5=%d version=%s egress=%s", p.HTTPPort, p.SocksPort, p.GostVersion, egressInterface), ""
+}
+
+func resolveEgressInterface(mode, custom string) (string, error) {
+	mode = strings.ToLower(strings.TrimSpace(mode))
+	custom = strings.TrimSpace(custom)
+	switch mode {
+	case "", "auto":
+		return "", nil
+	case "custom":
+		if custom == "" {
+			return "", errors.New("custom egress interface/IP is required")
+		}
+		return custom, nil
+	case "ipv4":
+		ip, err := localRouteSourceIP("ipv4")
+		if err != nil {
+			return "", err
+		}
+		return ip + "!", nil
+	case "ipv6":
+		ip, err := localRouteSourceIP("ipv6")
+		if err != nil {
+			return "", err
+		}
+		return ip + "!", nil
+	default:
+		return "", fmt.Errorf("unsupported egress mode: %s", mode)
+	}
+}
+
+func localRouteSourceIP(family string) (string, error) {
+	var out string
+	if family == "ipv6" {
+		out = commandOutput("ip", "-6", "route", "get", "2606:4700:4700::1111")
+	} else {
+		out = commandOutput("ip", "-4", "route", "get", "1.1.1.1")
+	}
+	if ip := parseRouteSourceIP(out, family); ip != "" {
+		return ip, nil
+	}
+	if ip := scanInterfaceIP(family); ip != "" {
+		return ip, nil
+	}
+	return "", fmt.Errorf("no local %s egress address found", family)
+}
+
+func parseRouteSourceIP(out, family string) string {
+	fields := strings.Fields(out)
+	for i := 0; i+1 < len(fields); i++ {
+		if fields[i] != "src" {
+			continue
+		}
+		if isUsableFamilyIP(fields[i+1], family) {
+			return fields[i+1]
+		}
+	}
+	return ""
+}
+
+func scanInterfaceIP(family string) string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return ""
+	}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			if ip := addrToNetip(addr.String()); usableAddr(ip, family) {
+				return ip.String()
+			}
+		}
+	}
+	return ""
+}
+
+func addrToNetip(raw string) netip.Addr {
+	if prefix, err := netip.ParsePrefix(raw); err == nil {
+		return prefix.Addr()
+	}
+	ip, _ := netip.ParseAddr(raw)
+	return ip
+}
+
+func isUsableFamilyIP(raw, family string) bool {
+	ip, err := netip.ParseAddr(raw)
+	if err != nil {
+		return false
+	}
+	return usableAddr(ip, family)
+}
+
+func usableAddr(ip netip.Addr, family string) bool {
+	if !ip.IsValid() || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+		return false
+	}
+	switch family {
+	case "ipv4":
+		return ip.Is4()
+	case "ipv6":
+		return ip.Is6() && ip.IsGlobalUnicast() && !ip.IsPrivate()
+	default:
+		return false
+	}
 }
 
 func ensureGostInstalled(version string) error {

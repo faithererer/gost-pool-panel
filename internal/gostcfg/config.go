@@ -8,10 +8,11 @@ type Config struct {
 }
 
 type Service struct {
-	Name     string   `json:"name"`
-	Addr     string   `json:"addr"`
-	Handler  Handler  `json:"handler"`
-	Listener Listener `json:"listener"`
+	Name     string         `json:"name"`
+	Addr     string         `json:"addr"`
+	Handler  Handler        `json:"handler"`
+	Listener Listener       `json:"listener"`
+	Metadata map[string]any `json:"metadata,omitempty"`
 }
 
 type Handler struct {
@@ -64,8 +65,9 @@ type Selector struct {
 	FailTimeout string `json:"failTimeout,omitempty"`
 }
 
-func NodeProxy(httpPort, socksPort int, username, password string) Config {
+func NodeProxy(httpPort, socksPort int, username, password, egressInterface string) Config {
 	auth := &Auth{Username: username, Password: password}
+	metadata := serviceMetadata(egressInterface)
 	services := make([]Service, 0, 2)
 	if httpPort > 0 {
 		services = append(services, Service{
@@ -76,6 +78,7 @@ func NodeProxy(httpPort, socksPort int, username, password string) Config {
 				Auth: auth,
 			},
 			Listener: Listener{Type: "tcp"},
+			Metadata: metadata,
 		})
 	}
 	if socksPort > 0 {
@@ -87,7 +90,15 @@ func NodeProxy(httpPort, socksPort int, username, password string) Config {
 				Auth: auth,
 			},
 			Listener: Listener{Type: "tcp"},
+			Metadata: metadata,
 		})
 	}
 	return Config{Services: services}
+}
+
+func serviceMetadata(egressInterface string) map[string]any {
+	if egressInterface == "" {
+		return nil
+	}
+	return map[string]any{"interface": egressInterface}
 }

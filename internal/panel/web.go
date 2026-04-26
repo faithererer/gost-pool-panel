@@ -217,7 +217,7 @@ const nodesHTML = `{{define "content"}}
       <td><strong>{{.Name}}</strong><div class="muted">{{.ID}}<br>{{.PublicIP}} {{.Hostname}}</div></td>
       <td><span class="pill {{.Status}}">{{.Status}}</span><div class="muted">{{formatTime .LastSeenAt}}</div></td>
       <td>{{.OS}}<div class="muted">{{.Arch}} agent {{.AgentVersion}}<br>gost {{gostText .GostVersion .GostStatus}}</div></td>
-      <td>HTTP {{.HTTPPort}}<br>SOCKS5 {{.SocksPort}}</td>
+      <td>HTTP {{.HTTPPort}}<br>SOCKS5 {{.SocksPort}}<div class="muted">出口 {{if .EgressMode}}{{.EgressMode}}{{else}}auto{{end}} {{.EgressInterface}}</div></td>
       <td>
         <form method="post" action="/nodes/groups">
           <input type="hidden" name="node_id" value="{{.ID}}">
@@ -244,6 +244,18 @@ const nodesHTML = `{{define "content"}}
           <div class="row">
             <div><label>HTTP 端口</label><input name="http_port" value="{{.HTTPPort}}" type="number"></div>
             <div><label>SOCKS5 端口</label><input name="socks_port" value="{{.SocksPort}}" type="number"></div>
+          </div>
+          <div class="row">
+            <div>
+              <label>出口网络</label>
+              <select name="egress_mode">
+                <option value="auto" {{if or (eq .EgressMode "") (eq .EgressMode "auto")}}selected{{end}}>自动</option>
+                <option value="ipv4" {{if eq .EgressMode "ipv4"}}selected{{end}}>强制 IPv4</option>
+                <option value="ipv6" {{if eq .EgressMode "ipv6"}}selected{{end}}>强制 IPv6</option>
+                <option value="custom" {{if eq .EgressMode "custom"}}selected{{end}}>自定义接口/IP</option>
+              </select>
+            </div>
+            <div><label>自定义接口/IP</label><input name="egress_interface" value="{{.EgressInterface}}" placeholder="eth0 或 2600:..."></div>
           </div>
           <label>GOST 版本</label>
           <input name="gost_version" value="3.2.6">
@@ -301,7 +313,6 @@ const poolsHTML = `{{define "content"}}
 <table>
   <thead><tr><th>名称</th><th>端口</th><th>分组 ID</th><th>状态</th><th>测试命令</th><th>操作</th></tr></thead>
   <tbody>
-  {{$host := proxyHost .BaseURL}}
   {{$auth := shellQuote (userPass .State.Settings)}}
   {{range .State.Pools}}
     <tr>
@@ -310,8 +321,8 @@ const poolsHTML = `{{define "content"}}
       <td>{{join .GroupIDs ", "}}</td>
       <td>{{if .Enabled}}启用{{else}}停用{{end}}<div class="muted">{{.RuntimeStatus}} {{.RuntimeError}}</div></td>
       <td>
-        {{if gt .HTTPPort 0}}<pre>curl -x http://{{$host}}:{{.HTTPPort}} -U {{$auth}} https://api.ipify.org</pre>{{end}}
-        {{if gt .SocksPort 0}}<pre>curl -x socks5h://{{$host}}:{{.SocksPort}} -U {{$auth}} https://api.ipify.org</pre>{{end}}
+        {{if gt .HTTPPort 0}}<pre>curl -x http://{{proxyAddr $.BaseURL .HTTPPort}} -U {{$auth}} https://api.ipify.org</pre>{{end}}
+        {{if gt .SocksPort 0}}<pre>curl -x socks5h://{{proxyAddr $.BaseURL .SocksPort}} -U {{$auth}} https://api.ipify.org</pre>{{end}}
       </td>
       <td><form method="post" action="/pools/restart"><input type="hidden" name="pool_id" value="{{.ID}}"><button type="submit">重启入口</button></form></td>
     </tr>

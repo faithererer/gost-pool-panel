@@ -43,6 +43,8 @@ type Node struct {
 	GroupIDs           []string  `json:"groupIds"`
 	HTTPPort           int       `json:"httpPort"`
 	SocksPort          int       `json:"socksPort"`
+	EgressMode         string    `json:"egressMode"`
+	EgressInterface    string    `json:"egressInterface"`
 	TodayUploadBytes   int64     `json:"todayUploadBytes"`
 	TodayDownloadBytes int64     `json:"todayDownloadBytes"`
 	TotalUploadBytes   int64     `json:"totalUploadBytes"`

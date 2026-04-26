@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -148,7 +150,7 @@ func (s *Server) writePoolConfig(pool model.Pool, nodes []model.Node, settings m
 	for _, n := range nodes {
 		gostNodes = append(gostNodes, gostcfg.Node{
 			Name: "node-" + n.ID,
-			Addr: n.PublicIP + ":" + fmt.Sprint(n.HTTPPort),
+			Addr: net.JoinHostPort(n.PublicIP, strconv.Itoa(n.HTTPPort)),
 			Connector: gostcfg.Connector{
 				Type: "http",
 				Auth: auth,

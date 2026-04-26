@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -159,7 +160,12 @@ func (s *Server) handleFormPost(w http.ResponseWriter, r *http.Request) {
 			}
 			httpPort, _ := strconv.Atoi(defaultString(r.FormValue("http_port"), "18080"))
 			socksPort, _ := strconv.Atoi(defaultString(r.FormValue("socks_port"), "18081"))
-			if err := s.store.UpdateNodePorts(nodeID, httpPort, socksPort); err != nil {
+			egressMode, egressInterface, err := egressFromForm(r)
+			if err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
+			if err := s.store.UpdateNodeProxyConfig(nodeID, httpPort, socksPort, egressMode, egressInterface); err != nil {
 				http.Error(w, err.Error(), http.StatusBadRequest)
 				return
 			}
@@ -437,12 +443,18 @@ func (s *Server) buildNodeProxyPayload(r *http.Request) (string, error) {
 	if username == "" || password == "" {
 		return "", fmt.Errorf("请先在设置中配置全局出口账号密码")
 	}
+	egressMode, egressInterface, err := egressFromForm(r)
+	if err != nil {
+		return "", err
+	}
 	payload := map[string]any{
-		"httpPort":    httpPort,
-		"socksPort":   socksPort,
-		"username":    username,
-		"password":    password,
-		"gostVersion": defaultString(r.FormValue("gost_version"), "3.2.6"),
+		"httpPort":        httpPort,
+		"socksPort":       socksPort,
+		"username":        username,
+		"password":        password,
+		"gostVersion":     defaultString(r.FormValue("gost_version"), "3.2.6"),
+		"egressMode":      egressMode,
+		"egressInterface": egressInterface,
 	}
 	b, err := json.Marshal(payload)
 	if err != nil {
@@ -461,12 +473,15 @@ func (s *Server) defaultNodeProxyPayload(node model.Node) map[string]any {
 	if socksPort <= 0 {
 		socksPort = 18081
 	}
+	egressMode := normalizeEgressMode(node.EgressMode)
 	return map[string]any{
-		"httpPort":    httpPort,
-		"socksPort":   socksPort,
-		"username":    state.Settings.ProxyUsername,
-		"password":    state.Settings.ProxyPassword,
-		"gostVersion": "3.2.6",
+		"httpPort":        httpPort,
+		"socksPort":       socksPort,
+		"username":        state.Settings.ProxyUsername,
+		"password":        state.Settings.ProxyPassword,
+		"gostVersion":     "3.2.6",
+		"egressMode":      egressMode,
+		"egressInterface": strings.TrimSpace(node.EgressInterface),
 	}
 }
 
@@ -577,7 +592,7 @@ func renderTemplate(w http.ResponseWriter, title string, data any, body string) 
 		"contains":    contains,
 		"join":        strings.Join,
 		"gostText":    gostText,
-		"proxyHost":   proxyHost,
+		"proxyAddr":   proxyAddr,
 		"shellQuote":  shellQuote,
 		"userPass":    userPass,
 	}
@@ -635,14 +650,35 @@ func gostText(version, status string) string {
 	return strings.TrimSpace(version + " " + status)
 }
 
-func proxyHost(baseURL string) string {
+func proxyAddr(baseURL string, port int) string {
 	u, err := url.Parse(baseURL)
 	if err != nil || u.Hostname() == "" {
-		return "PANEL_IP"
+		return "PANEL_IP:" + strconv.Itoa(port)
 	}
-	return u.Hostname()
+	return net.JoinHostPort(u.Hostname(), strconv.Itoa(port))
 }
 
 func userPass(settings model.Settings) string {
 	return settings.ProxyUsername + ":" + settings.ProxyPassword
+}
+
+func normalizeEgressMode(mode string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "ipv4", "ipv6", "custom":
+		return strings.ToLower(strings.TrimSpace(mode))
+	default:
+		return "auto"
+	}
+}
+
+func egressFromForm(r *http.Request) (string, string, error) {
+	mode := normalizeEgressMode(r.FormValue("egress_mode"))
+	iface := strings.TrimSpace(r.FormValue("egress_interface"))
+	if mode == "custom" && iface == "" {
+		return "", "", fmt.Errorf("自定义出口需要填写接口名或本机 IP")
+	}
+	if mode != "custom" {
+		iface = ""
+	}
+	return mode, iface, nil
 }

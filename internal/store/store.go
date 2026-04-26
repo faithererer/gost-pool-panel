@@ -177,6 +177,7 @@ func (s *Store) RegisterNode(registerToken, name, publicIP, hostname, osName, ar
 		GostStatus:   gostStatus,
 		HTTPPort:     18080,
 		SocksPort:    18081,
+		EgressMode:   "auto",
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
@@ -284,7 +285,7 @@ func (s *Store) AssignGroups(nodeID string, groupIDs []string) error {
 	return errors.New("node not found")
 }
 
-func (s *Store) UpdateNodePorts(nodeID string, httpPort, socksPort int) error {
+func (s *Store) UpdateNodeProxyConfig(nodeID string, httpPort, socksPort int, egressMode, egressInterface string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i := range s.state.Nodes {
@@ -295,6 +296,11 @@ func (s *Store) UpdateNodePorts(nodeID string, httpPort, socksPort int) error {
 			if socksPort > 0 {
 				s.state.Nodes[i].SocksPort = socksPort
 			}
+			if egressMode == "" {
+				egressMode = "auto"
+			}
+			s.state.Nodes[i].EgressMode = egressMode
+			s.state.Nodes[i].EgressInterface = egressInterface
 			s.state.Nodes[i].ConfigVersion++
 			s.state.Nodes[i].UpdatedAt = time.Now().UTC()
 			return s.saveLocked()

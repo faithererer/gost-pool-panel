@@ -22,6 +22,12 @@ PANEL_PROXY_USERNAME=proxy
 PANEL_PROXY_PASSWORD=一个代理入口密码
 ```
 
+如果管理端用 IPv6 公网地址，URL 必须加中括号：
+
+```bash
+PANEL_BASE_URL=http://[2600:1700:abcd::1234]:3000
+```
+
 启动：
 
 ```bash
@@ -92,6 +98,13 @@ journalctl -u gost-pool-agent -f
 
 如果需要修改节点端 HTTP/SOCKS5 端口，进入“节点”，手动下发“同步节点代理”任务即可覆盖配置。
 
+双栈节点可以在同一个任务里选择“出口网络”：
+
+- `自动`：使用系统路由。
+- `强制 IPv4`：agent 自动从 Linux 路由表选择 IPv4 源地址。
+- `强制 IPv6`：agent 自动从 Linux 路由表选择 IPv6 源地址，适合带住宅 IPv6 的 VPS。
+- `自定义接口/IP`：手动填写网卡名或本机 IP，例如 `eth0`、`ens3`、`2600:...`。
+
 agent 会在节点 VPS 上执行：
 
 - 下载并安装 GOST v3 到 `/usr/local/bin/gost`
@@ -129,6 +142,12 @@ curl -x socks5h://管理端IP:SOCKS5入口端口 -U '用户名:密码' https://a
 ```
 
 代理池页面会按照当前设置直接生成这两条命令，可以优先复制页面里的命令测试。
+
+如果管理端代理入口是 IPv6，测试命令里的地址格式应类似：
+
+```bash
+curl -x http://[2600:1700:abcd::1234]:28080 -U '用户名:密码' https://api.ipify.org
+```
 
 ### GOST 显示 not installed
 
