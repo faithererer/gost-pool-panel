@@ -522,7 +522,19 @@ func ensureGostInstalled(version string) error {
 	}
 	defer gz.Close()
 	tr := tar.NewReader(gz)
-	tmpPath := fmt.Sprintf("/tmp/gost-%s-%d", version, time.Now().UTC().UnixNano())
+	targetDir := "/usr/local/bin"
+	targetPath := filepath.Join(targetDir, "gost")
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		return err
+	}
+	tmp, err := os.CreateTemp(targetDir, fmt.Sprintf(".gost-%s-*", version))
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	if err := tmp.Close(); err != nil {
+		return err
+	}
 	defer os.Remove(tmpPath)
 	found := false
 	for {
@@ -553,13 +565,13 @@ func ensureGostInstalled(version string) error {
 	if !found {
 		return errors.New("GOST binary not found in release archive")
 	}
-	if err := os.MkdirAll("/usr/local/bin", 0o755); err != nil {
+	if err := os.Chmod(tmpPath, 0o755); err != nil {
 		return err
 	}
-	if err := os.Rename(tmpPath, "/usr/local/bin/gost"); err != nil {
+	if err := os.Rename(tmpPath, targetPath); err != nil {
 		return err
 	}
-	return os.Chmod("/usr/local/bin/gost", 0o755)
+	return nil
 }
 
 func writeGostService() error {
