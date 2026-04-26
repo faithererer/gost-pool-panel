@@ -172,6 +172,7 @@ ghcr.io/YOUR_NAME/gost-pool-panel:v0.1.0
 - 节点流量字段和 API。
 - 下发任务骨架。
 - 管理端远程升级 agent：agent `0.3.3` 起可以通过“节点”页下发“升级 agent”任务。
+- agent `0.3.4` 修复 GOST 安装时 `/tmp` 与 `/usr/local/bin` 跨文件系统导致的 `invalid cross-device link`。
 - 远程卸载 agent：任务回报成功后，节点端会删除 `gost-pool-agent.service` 和 `/opt/gost-pool-agent`，不会停止或删除 GOST。
 - 节点记录删除：面板支持删除单个节点记录，也支持清理所有 `agent uninstalled` 节点及其任务记录。
 

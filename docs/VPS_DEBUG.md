@@ -70,6 +70,8 @@ admin / 你设置的 PANEL_ADMIN_PASSWORD
 
 agent `0.3.3` 起支持管理端远程升级。进入“节点”，任务选择“升级 agent”并下发；节点会从管理端 `/downloads/` 拉取同架构最新 agent，回传任务成功后自动重启 `gost-pool-agent.service`。老版本 agent 不认识这个任务，需要先手动执行一次安装命令升级到 `0.3.3` 或更新版本。
 
+agent `0.3.4` 修复 GOST 自动安装时从 `/tmp` 移动到 `/usr/local/bin/gost` 可能出现的 `invalid cross-device link`。如果节点同步代理仍出现该错误，说明节点还在运行旧 agent，需要先升级 agent，再重新下发“同步节点代理”。
+
 确认管理端容器里是否已经是新版本：
 
 ```bash

@@ -204,7 +204,7 @@ Returns `State`. This is the preferred first request after login.
 Response:
 
 ```json
-{ "panel": "0.3.3", "agent": "0.3.3" }
+{ "panel": "0.3.4", "agent": "0.3.4" }
 ```
 
 Use this to mark nodes whose `agentVersion !== versions.agent` as upgrade candidates.
