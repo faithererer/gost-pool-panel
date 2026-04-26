@@ -100,10 +100,9 @@ HTTPS 不内置，生产环境请使用 Nginx、Caddy、宝塔等反向代理。
 
 ## 发布镜像
 
-仓库内置 GitHub Actions，会在推送 `main`、`master` 或 `v*` tag 时构建并发布 GHCR 镜像：
+仓库内置 GitHub Actions。为避免普通提交频繁触发镜像构建，只有推送 `v*` tag 或手动触发 workflow 时才会构建并发布 GHCR 镜像：
 
 ```text
-ghcr.io/YOUR_NAME/gost-pool-panel:main
 ghcr.io/YOUR_NAME/gost-pool-panel:v0.1.0
 ```
 

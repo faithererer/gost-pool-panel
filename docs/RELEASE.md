@@ -9,13 +9,7 @@ git remote add origin https://github.com/YOUR_NAME/gost-pool-panel.git
 git push -u origin main
 ```
 
-推送到 `main` 或 `master` 后，GitHub Actions 会构建并发布镜像到 GHCR：
-
-```text
-ghcr.io/YOUR_NAME/gost-pool-panel:main
-```
-
-打 tag：
+普通分支推送不会触发镜像构建。需要发布镜像时打 tag：
 
 ```bash
 git tag v0.1.0
@@ -33,7 +27,7 @@ ghcr.io/YOUR_NAME/gost-pool-panel:v0.1.0
 把 `docker-compose.yml` 中的 `build: .` 替换为：
 
 ```yaml
-image: ghcr.io/YOUR_NAME/gost-pool-panel:main
+image: ghcr.io/YOUR_NAME/gost-pool-panel:v0.1.0
 ```
 
 然后启动：
