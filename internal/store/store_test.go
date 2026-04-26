@@ -147,3 +147,54 @@ func TestDeleteRegisterTokenAndTasks(t *testing.T) {
 		t.Fatalf("deleted tasks = %d, want 1", count)
 	}
 }
+
+func TestAddTrafficAccumulatesAndRejectsNegative(t *testing.T) {
+	st := newTestStore(t)
+	node := registerTestNode(t, st, "node-a")
+
+	if err := st.AddTraffic(node.ID, 100, 200); err != nil {
+		t.Fatal(err)
+	}
+	if err := st.AddTraffic(node.ID, 50, 25); err != nil {
+		t.Fatal(err)
+	}
+	updated, ok := st.Node(node.ID)
+	if !ok {
+		t.Fatal("node missing")
+	}
+	if updated.TodayUploadBytes != 150 || updated.TodayDownloadBytes != 225 {
+		t.Fatalf("today traffic = %d/%d", updated.TodayUploadBytes, updated.TodayDownloadBytes)
+	}
+	if updated.TotalUploadBytes != 150 || updated.TotalDownloadBytes != 225 {
+		t.Fatalf("total traffic = %d/%d", updated.TotalUploadBytes, updated.TotalDownloadBytes)
+	}
+	if updated.TrafficDate != time.Now().UTC().Format("2006-01-02") {
+		t.Fatalf("traffic date = %q", updated.TrafficDate)
+	}
+
+	st.mu.Lock()
+	for i := range st.state.Nodes {
+		if st.state.Nodes[i].ID == node.ID {
+			st.state.Nodes[i].TrafficDate = "2000-01-01"
+			st.state.Nodes[i].TodayUploadBytes = 999
+			st.state.Nodes[i].TodayDownloadBytes = 999
+		}
+	}
+	st.mu.Unlock()
+	if err := st.AddTraffic(node.ID, 10, 20); err != nil {
+		t.Fatal(err)
+	}
+	updated, ok = st.Node(node.ID)
+	if !ok {
+		t.Fatal("node missing")
+	}
+	if updated.TodayUploadBytes != 10 || updated.TodayDownloadBytes != 20 {
+		t.Fatalf("reset today traffic = %d/%d", updated.TodayUploadBytes, updated.TodayDownloadBytes)
+	}
+	if updated.TotalUploadBytes != 160 || updated.TotalDownloadBytes != 245 {
+		t.Fatalf("total after reset = %d/%d", updated.TotalUploadBytes, updated.TotalDownloadBytes)
+	}
+	if err := st.AddTraffic(node.ID, -1, 0); err == nil {
+		t.Fatal("negative upload accepted")
+	}
+}

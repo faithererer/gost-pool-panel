@@ -27,6 +27,7 @@ export interface Node {
   socksPort: number;
   egressMode: EgressMode | "";
   egressInterface: string;
+  trafficDate?: string;
   todayUploadBytes: number;
   todayDownloadBytes: number;
   totalUploadBytes: number;

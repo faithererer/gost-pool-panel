@@ -101,6 +101,7 @@ export interface Node {
   socksPort: number;
   egressMode: EgressMode | "";
   egressInterface: string;
+  trafficDate?: string;
   todayUploadBytes: number;
   todayDownloadBytes: number;
   totalUploadBytes: number;
@@ -204,7 +205,7 @@ Returns `State`. This is the preferred first request after login.
 Response:
 
 ```json
-{ "panel": "0.3.4", "agent": "0.3.4" }
+{ "panel": "0.3.5", "agent": "0.3.5" }
 ```
 
 Use this to mark nodes whose `agentVersion !== versions.agent` as upgrade candidates.

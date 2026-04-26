@@ -45,6 +45,7 @@ type Node struct {
 	SocksPort          int       `json:"socksPort"`
 	EgressMode         string    `json:"egressMode"`
 	EgressInterface    string    `json:"egressInterface"`
+	TrafficDate        string    `json:"trafficDate,omitempty"`
 	TodayUploadBytes   int64     `json:"todayUploadBytes"`
 	TodayDownloadBytes int64     `json:"todayDownloadBytes"`
 	TotalUploadBytes   int64     `json:"totalUploadBytes"`

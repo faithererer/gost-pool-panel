@@ -320,11 +320,20 @@ func (s *Store) Heartbeat(nodeID string, patch model.Node) (model.Node, error) {
 }
 
 func (s *Store) AddTraffic(nodeID string, upload, download int64) error {
+	if upload < 0 || download < 0 {
+		return errors.New("traffic bytes cannot be negative")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for i := range s.state.Nodes {
 		n := &s.state.Nodes[i]
 		if n.ID == nodeID {
+			today := time.Now().UTC().Format("2006-01-02")
+			if n.TrafficDate != today {
+				n.TrafficDate = today
+				n.TodayUploadBytes = 0
+				n.TodayDownloadBytes = 0
+			}
 			n.TodayUploadBytes += upload
 			n.TodayDownloadBytes += download
 			n.TotalUploadBytes += upload

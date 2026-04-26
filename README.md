@@ -20,7 +20,7 @@
 - 节点端可以通过任务自动安装 GOST v3，并启动带账号密码认证的 HTTP/SOCKS5 代理。
 - 管理端可以基于节点分组生成中心 GOST 入口并启动代理池。
 - 节点代理出口支持自动、强制 IPv4、强制 IPv6、自定义接口/IP，适合双栈 VPS 选择住宅 IPv6 出口。
-- 精确流量统计仍在后续实现中。
+- agent 会基于节点侧 GOST 监听端口统计入站/出站流量，并上报到面板。
 
 ## 本地运行
 
@@ -170,6 +170,7 @@ ghcr.io/YOUR_NAME/gost-pool-panel:v0.1.0
 - 管理端中心 GOST 代理池入口。
 - 全局出口代理账号密码。
 - 节点流量字段和 API。
+- agent `0.3.5` 起会上报节点 HTTP/SOCKS5 代理端口流量统计。
 - 下发任务骨架。
 - 管理端远程升级 agent：agent `0.3.3` 起可以通过“节点”页下发“升级 agent”任务。
 - agent `0.3.4` 修复 GOST 安装时 `/tmp` 与 `/usr/local/bin` 跨文件系统导致的 `invalid cross-device link`。
@@ -180,5 +181,4 @@ ghcr.io/YOUR_NAME/gost-pool-panel:v0.1.0
 
 - 代理健康检查和自动剔除故障节点。
 - 代理池配置编辑/删除。
-- 更准确的流量统计。
 - 前端框架化和 UI 优化。

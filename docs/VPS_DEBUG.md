@@ -72,6 +72,8 @@ agent `0.3.3` 起支持管理端远程升级。进入“节点”，任务选择
 
 agent `0.3.4` 修复 GOST 自动安装时从 `/tmp` 移动到 `/usr/local/bin/gost` 可能出现的 `invalid cross-device link`。如果节点同步代理仍出现该错误，说明节点还在运行旧 agent，需要先升级 agent，再重新下发“同步节点代理”。
 
+agent `0.3.5` 起会上报节点侧 GOST HTTP/SOCKS5 监听端口的入站/出站流量。统计依赖 Linux `iptables`/`ip6tables` 计数规则；如果面板一直显示 `0B`，先确认节点 agent 已升级到 `0.3.5` 或更新版本。
+
 确认管理端容器里是否已经是新版本：
 
 ```bash

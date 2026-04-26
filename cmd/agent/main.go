@@ -28,11 +28,12 @@ import (
 const defaultGostVersion = "3.2.6"
 
 type Config struct {
-	Server        string `json:"server"`
-	RegisterToken string `json:"registerToken"`
-	NodeName      string `json:"nodeName"`
-	NodeID        string `json:"nodeId"`
-	AgentToken    string `json:"agentToken"`
+	Server        string       `json:"server"`
+	RegisterToken string       `json:"registerToken"`
+	NodeName      string       `json:"nodeName"`
+	NodeID        string       `json:"nodeId"`
+	AgentToken    string       `json:"agentToken"`
+	Traffic       TrafficState `json:"traffic,omitempty"`
 }
 
 type Agent struct {
@@ -76,7 +77,8 @@ func main() {
 	ticker := time.NewTicker(20 * time.Second)
 	defer ticker.Stop()
 	for {
-		if err := a.heartbeat(); err != nil {
+		node, err := a.heartbeat()
+		if err != nil {
 			if isUnauthorized(err) {
 				log.Printf("heartbeat unauthorized, trying to re-register with current register token")
 				a.cfg.NodeID = ""
@@ -88,6 +90,8 @@ func main() {
 				continue
 			}
 			log.Printf("heartbeat failed: %v", err)
+		} else if err := a.reportTraffic(node.HTTPPort, node.SocksPort); err != nil {
+			log.Printf("traffic report failed: %v", err)
 		}
 		if err := a.pollTasks(); err != nil {
 			log.Printf("task polling failed: %v", err)
@@ -158,7 +162,7 @@ func (a *Agent) register() error {
 	return a.saveConfig()
 }
 
-func (a *Agent) heartbeat() error {
+func (a *Agent) heartbeat() (model.Node, error) {
 	hostname, _ := os.Hostname()
 	gostVersion := gostVersion()
 	req := map[string]any{
@@ -170,7 +174,10 @@ func (a *Agent) heartbeat() error {
 		"gostStatus":   gostStatus(gostVersion),
 	}
 	var resp model.Node
-	return a.postJSON("/api/agent/heartbeat", a.authHeader(), req, &resp)
+	if err := a.postJSON("/api/agent/heartbeat", a.authHeader(), req, &resp); err != nil {
+		return model.Node{}, err
+	}
+	return resp, nil
 }
 
 func (a *Agent) pollTasks() error {
