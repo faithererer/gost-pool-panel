@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"gost-pool-panel/internal/buildinfo"
 	"gost-pool-panel/internal/model"
 )
 
@@ -12,6 +13,8 @@ type viewData struct {
 	State       model.State
 	BaseURL     string
 	InstallCmds map[string]string
+	PanelVersion string
+	AgentVersion string
 }
 
 func (s *Server) viewData() viewData {
@@ -20,7 +23,13 @@ func (s *Server) viewData() viewData {
 	for _, t := range state.RegisterTokens {
 		cmds[t.Token] = s.installCommand(t.Token, t.Name)
 	}
-	return viewData{State: state, BaseURL: s.cfg.BaseURL, InstallCmds: cmds}
+	return viewData{
+		State:        state,
+		BaseURL:      s.cfg.BaseURL,
+		InstallCmds:  cmds,
+		PanelVersion: buildinfo.PanelVersion,
+		AgentVersion: buildinfo.AgentVersion,
+	}
 }
 
 func (s *Server) renderLogin(w http.ResponseWriter, msg string) {
@@ -134,7 +143,7 @@ const baseHTML = `{{define "base"}}
       </nav>
     </aside>
     <main class="main">
-      <div class="topbar"><h1>{{.Title}}</h1><span class="muted">中心地址：{{.Data.BaseURL}}</span></div>
+      <div class="topbar"><h1>{{.Title}}</h1><span class="muted">中心地址：{{.Data.BaseURL}} · panel {{.Data.PanelVersion}} · agent {{.Data.AgentVersion}}</span></div>
       {{template "content" .Data}}
     </main>
   </div>
@@ -383,21 +392,6 @@ if [[ "$(uname -s)" != "Linux" ]]; then
   exit 1
 fi
 
-if [[ -z "$TOKEN" ]]; then
-  echo "--token is required"
-  exit 1
-fi
-
-echo "Checking register token"
-TOKEN_CHECK="$(curl -sS -w '\n%{http_code}' "$SERVER/api/agent/register-token/check?token=$TOKEN")"
-TOKEN_CODE="$(printf '%s\n' "$TOKEN_CHECK" | tail -n 1)"
-TOKEN_BODY="$(printf '%s\n' "$TOKEN_CHECK" | sed '$d')"
-if [[ "$TOKEN_CODE" != "200" ]]; then
-  echo "Register token is not available. Generate a new token in the panel."
-  echo "$TOKEN_BODY"
-  exit 1
-fi
-
 ARCH="$(uname -m)"
 case "$ARCH" in
   x86_64|amd64) BIN="gost-pool-agent-linux-amd64" ;;
@@ -411,6 +405,30 @@ if [[ "$EUID" -ne 0 ]]; then
 fi
 
 mkdir -p "$INSTALL_DIR"
+EXISTING_AGENT=0
+if [[ -s "$INSTALL_DIR/agent.json" ]] && grep -q '"nodeId"' "$INSTALL_DIR/agent.json" && grep -q '"agentToken"' "$INSTALL_DIR/agent.json"; then
+  EXISTING_AGENT=1
+fi
+
+if [[ -z "$TOKEN" && "$EXISTING_AGENT" != "1" ]]; then
+  echo "--token is required"
+  exit 1
+fi
+
+if [[ "$EXISTING_AGENT" == "1" ]]; then
+  echo "Existing agent identity found; skipping register token check for in-place upgrade."
+else
+  echo "Checking register token"
+  TOKEN_CHECK="$(curl -sS -w '\n%{http_code}' "$SERVER/api/agent/register-token/check?token=$TOKEN")"
+  TOKEN_CODE="$(printf '%s\n' "$TOKEN_CHECK" | tail -n 1)"
+  TOKEN_BODY="$(printf '%s\n' "$TOKEN_CHECK" | sed '$d')"
+  if [[ "$TOKEN_CODE" != "200" ]]; then
+    echo "Register token is not available. Generate a new token in the panel."
+    echo "$TOKEN_BODY"
+    exit 1
+  fi
+fi
+
 echo "Downloading agent from $SERVER/downloads/$BIN"
 TMP_AGENT="$(mktemp "$INSTALL_DIR/gost-pool-agent.XXXXXX")"
 cleanup_tmp_agent() {
@@ -419,6 +437,7 @@ cleanup_tmp_agent() {
 trap cleanup_tmp_agent EXIT
 curl -fsSL "$SERVER/downloads/$BIN" -o "$TMP_AGENT"
 chmod +x "$TMP_AGENT"
+echo "Downloaded agent version: $("$TMP_AGENT" --version 2>/dev/null || echo unknown)"
 mv -f "$TMP_AGENT" "$INSTALL_DIR/gost-pool-agent"
 trap - EXIT
 

@@ -20,11 +20,11 @@ import (
 	"strings"
 	"time"
 
+	"gost-pool-panel/internal/buildinfo"
 	"gost-pool-panel/internal/gostcfg"
 	"gost-pool-panel/internal/model"
 )
 
-const agentVersion = "0.3.0"
 const defaultGostVersion = "3.2.6"
 
 type Config struct {
@@ -42,17 +42,23 @@ type Agent struct {
 }
 
 func main() {
-	if runtime.GOOS != "linux" {
-		log.Fatalf("gost-pool-agent only supports Linux nodes, current OS is %s", runtime.GOOS)
-	}
-
 	var cfg Config
 	var cfgPath string
+	var showVersion bool
+	flag.BoolVar(&showVersion, "version", false, "print version")
 	flag.StringVar(&cfg.Server, "server", getenv("GPP_SERVER", ""), "panel server URL")
 	flag.StringVar(&cfg.RegisterToken, "token", getenv("GPP_REGISTER_TOKEN", ""), "register token")
 	flag.StringVar(&cfg.NodeName, "name", getenv("GPP_NODE_NAME", ""), "node name")
 	flag.StringVar(&cfgPath, "config", getenv("GPP_CONFIG", "/opt/gost-pool-agent/agent.json"), "config path")
 	flag.Parse()
+	if showVersion {
+		fmt.Println(buildinfo.AgentVersion)
+		return
+	}
+
+	if runtime.GOOS != "linux" {
+		log.Fatalf("gost-pool-agent only supports Linux nodes, current OS is %s", runtime.GOOS)
+	}
 
 	a := &Agent{cfgPath: cfgPath, cfg: cfg, client: &http.Client{Timeout: 15 * time.Second}}
 	if err := a.loadConfig(); err != nil {
@@ -136,7 +142,7 @@ func (a *Agent) register() error {
 		"hostname":     hostname,
 		"os":           linuxPrettyName(),
 		"arch":         runtime.GOARCH,
-		"agentVersion": agentVersion,
+		"agentVersion": buildinfo.AgentVersion,
 		"gostVersion":  gostVersion,
 		"gostStatus":   gostStatus(gostVersion),
 	}
@@ -159,7 +165,7 @@ func (a *Agent) heartbeat() error {
 		"hostname":     hostname,
 		"os":           linuxPrettyName(),
 		"arch":         runtime.GOARCH,
-		"agentVersion": agentVersion,
+		"agentVersion": buildinfo.AgentVersion,
 		"gostVersion":  gostVersion,
 		"gostStatus":   gostStatus(gostVersion),
 	}

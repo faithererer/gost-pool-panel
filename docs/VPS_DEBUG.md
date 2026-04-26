@@ -66,6 +66,21 @@ admin / 你设置的 PANEL_ADMIN_PASSWORD
 
 重复执行一键安装命令会覆盖 agent 并重启 `gost-pool-agent.service`，可以用来升级节点端 agent。升级后面板里应能看到新的 agent 版本。
 
+如果节点已经注册过，安装脚本会检测 `/opt/gost-pool-agent/agent.json` 里的节点身份，并按原地升级处理，不会再次消耗注册 token。
+
+确认管理端容器里是否已经是新版本：
+
+```bash
+docker exec gost-pool-panel /app/gost-pool-panel --version
+docker exec gost-pool-panel /app/dist/gost-pool-agent-linux-amd64 --version
+```
+
+确认节点实际安装的 agent 版本：
+
+```bash
+/opt/gost-pool-agent/gost-pool-agent --version
+```
+
 查看节点 agent：
 
 ```bash
