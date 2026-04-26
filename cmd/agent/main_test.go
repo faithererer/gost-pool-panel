@@ -37,6 +37,20 @@ func TestResolverOnlyForEgressIPv6(t *testing.T) {
 	}
 }
 
+func TestPreferIPv6DoesNotForceInterface(t *testing.T) {
+	iface, err := resolveEgressInterface("prefer_ipv6", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if iface != "" {
+		t.Fatalf("resolveEgressInterface() = %q, want empty", iface)
+	}
+	got := resolverOnlyForEgress("prefer_ipv6", "")
+	if got != "prefer_ipv6" {
+		t.Fatalf("resolverOnlyForEgress() = %q, want prefer_ipv6", got)
+	}
+}
+
 func TestResolverOnlyForCustomIPv6Address(t *testing.T) {
 	got := resolverOnlyForEgress("custom", "2600:1700:abcd::1234")
 	if got != "ipv6" {

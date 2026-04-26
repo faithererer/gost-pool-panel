@@ -40,6 +40,21 @@ function proxyLabel(protocol: ProxyProtocol) {
   return protocol === 'http' ? 'HTTP' : 'SOCKS5';
 }
 
+function egressLabel(mode?: string) {
+  switch (mode) {
+    case 'ipv4':
+      return '强制 IPv4';
+    case 'ipv6':
+      return '强制 IPv6';
+    case 'prefer_ipv6':
+      return 'IPv6 优先';
+    case 'custom':
+      return '自定义';
+    default:
+      return '自动';
+  }
+}
+
 export default function Nodes() {
   const { state, refreshState, notify } = useAppContext();
   const [search, setSearch] = useState('');
@@ -255,7 +270,7 @@ export default function Nodes() {
 
                   <div className="mt-4 flex flex-wrap gap-2">
                     <span className="rounded-full bg-secondary px-2 py-1 text-xs text-secondary-foreground">
-                      出口：{node.egressMode || 'auto'}{node.egressInterface ? ` / ${node.egressInterface}` : ''}
+                      出口：{egressLabel(node.egressMode)}{node.egressInterface ? ` / ${node.egressInterface}` : ''}
                     </span>
                     {groups.length > 0 ? groups.map((name) => (
                       <span key={name} className="rounded-full bg-primary/10 px-2 py-1 text-xs text-primary">{name}</span>
@@ -434,6 +449,7 @@ export default function Nodes() {
               >
                 <option value="auto">自动</option>
                 <option value="ipv4">强制 IPv4</option>
+                <option value="prefer_ipv6">IPv6 优先（兼容 IPv4-only 目标）</option>
                 <option value="ipv6">强制 IPv6</option>
                 <option value="custom">自定义接口或本机 IP</option>
               </select>

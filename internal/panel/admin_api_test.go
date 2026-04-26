@@ -177,6 +177,35 @@ func TestAdminBatchTaskAndRetry(t *testing.T) {
 	}
 }
 
+func TestAdminSyncNodeProxyAcceptsPreferIPv6(t *testing.T) {
+	ts, st := newAdminTestServer(t)
+	defer ts.Close()
+	node := registerPanelTestNode(t, st, "node-a")
+	client := newAdminClient(t)
+	loginAdmin(t, client, ts.URL)
+
+	body := `{"type":"sync_node_proxy","httpPort":18080,"socksPort":18081,"gostVersion":"3.2.6","egressMode":"prefer_ipv6"}`
+	var task model.Task
+	code := doJSON(t, client, http.MethodPost, ts.URL+"/api/admin/nodes/"+node.ID+"/tasks", body, &task)
+	if code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", code)
+	}
+	updated, ok := st.Node(node.ID)
+	if !ok {
+		t.Fatal("node missing")
+	}
+	if updated.EgressMode != "prefer_ipv6" || updated.EgressInterface != "" {
+		t.Fatalf("node egress = %q/%q", updated.EgressMode, updated.EgressInterface)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(task.Payload), &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload["egressMode"] != "prefer_ipv6" {
+		t.Fatalf("payload = %#v", payload)
+	}
+}
+
 func TestAdminGroupPoolAndSettingsAPIs(t *testing.T) {
 	ts, st := newAdminTestServer(t)
 	defer ts.Close()

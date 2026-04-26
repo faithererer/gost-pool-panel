@@ -38,3 +38,25 @@ func TestNodeProxyOmitsEmptyEgressInterface(t *testing.T) {
 		t.Fatalf("resolvers = %#v, want nil", cfg.Resolvers)
 	}
 }
+
+func TestNodeProxyAddsPreferIPv6Resolver(t *testing.T) {
+	cfg := NodeProxy(18080, 18081, "proxy", "secret", "", "prefer_ipv6")
+	if len(cfg.Services) != 2 {
+		t.Fatalf("services = %d, want 2", len(cfg.Services))
+	}
+	for _, svc := range cfg.Services {
+		if svc.Interface != "" {
+			t.Fatalf("service %s interface = %q, want empty", svc.Name, svc.Interface)
+		}
+		if svc.Resolver != "resolver-prefer-ipv6" {
+			t.Fatalf("service %s resolver = %q, want resolver-prefer-ipv6", svc.Name, svc.Resolver)
+		}
+	}
+	if len(cfg.Resolvers) != 1 {
+		t.Fatalf("resolvers = %d, want 1", len(cfg.Resolvers))
+	}
+	ns := cfg.Resolvers[0].Nameservers[0]
+	if ns.Prefer != "ipv6" || ns.Only != "" {
+		t.Fatalf("nameserver = %#v, want prefer ipv6 without only", ns)
+	}
+}

@@ -640,7 +640,7 @@ func (s *Server) renderFallbackLogin(w http.ResponseWriter, msg string) {
 
 func normalizeEgressMode(mode string) string {
 	switch strings.ToLower(strings.TrimSpace(mode)) {
-	case "ipv4", "ipv6", "custom":
+	case "ipv4", "ipv6", "prefer_ipv6", "custom":
 		return strings.ToLower(strings.TrimSpace(mode))
 	default:
 		return "auto"

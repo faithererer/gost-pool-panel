@@ -1,6 +1,6 @@
 export type NodeStatus = "online" | "offline";
 export type TaskStatus = "pending" | "running" | "success" | "failed";
-export type EgressMode = "auto" | "ipv4" | "ipv6" | "custom";
+export type EgressMode = "auto" | "ipv4" | "ipv6" | "prefer_ipv6" | "custom";
 export type PoolStrategy = "round" | "random" | "rand";
 
 export interface Settings {

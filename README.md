@@ -19,7 +19,7 @@
 - Docker 镜像会内置 Linux `amd64` 和 `arm64` agent，节点一键安装命令可以直接下载。
 - 节点端可以通过任务自动安装 GOST v3，并启动带账号密码认证的 HTTP/SOCKS5 代理。
 - 管理端可以基于节点分组生成中心 GOST 入口并启动代理池。
-- 节点代理出口支持自动、强制 IPv4、强制 IPv6、自定义接口/IP，适合双栈 VPS 选择住宅 IPv6 出口。
+- 节点代理出口支持自动、强制 IPv4、IPv6 优先、强制 IPv6、自定义接口/IP，适合双栈 VPS 选择住宅 IPv6 出口。
 - agent 会基于节点侧 GOST 监听端口统计入站/出站流量，并上报到面板。
 
 ## 本地运行
@@ -143,7 +143,8 @@ ghcr.io/YOUR_NAME/gost-pool-panel:v0.1.0
 
 - `自动`：交给系统路由和 GOST 默认行为。
 - `强制 IPv4`：agent 自动选择本机 IPv4 源地址作为 GOST 出口。
-- `强制 IPv6`：agent 自动选择本机 IPv6 源地址作为 GOST 出口，并让 GOST 只使用 AAAA 解析结果。
+- `IPv6 优先`：GOST DNS 优先返回 AAAA，但允许 IPv4-only 目标回退到系统 IPv4，适合接入兼容性一般的应用。
+- `强制 IPv6`：agent 自动选择本机 IPv6 源地址作为 GOST 出口，并让 GOST 只使用 AAAA 解析结果；目标没有 AAAA 记录时会失败。
 - `自定义接口/IP`：手动填写网卡名或本机 IP，例如 `eth0` 或 `2600:...`。
 
 节点端安装脚本会：

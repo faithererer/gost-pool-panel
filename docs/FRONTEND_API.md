@@ -74,7 +74,7 @@ Response:
 ```ts
 export type NodeStatus = "online" | "offline";
 export type TaskStatus = "pending" | "running" | "success" | "failed";
-export type EgressMode = "auto" | "ipv4" | "ipv6" | "custom";
+export type EgressMode = "auto" | "ipv4" | "prefer_ipv6" | "ipv6" | "custom";
 export type PoolStrategy = "round" | "random" | "rand";
 
 export interface Settings {
@@ -205,7 +205,7 @@ Returns `State`. This is the preferred first request after login.
 Response:
 
 ```json
-{ "panel": "0.3.6", "agent": "0.3.5" }
+{ "panel": "0.3.7", "agent": "0.3.7" }
 ```
 
 Use this to mark nodes whose `agentVersion !== versions.agent` as upgrade candidates.
@@ -332,7 +332,8 @@ Rules:
 
 - `sync_node_proxy` and `update_ports` generate the GOST payload server-side using global proxy credentials.
 - `update_ports` is normalized to a `sync_node_proxy` task.
-- `egressMode` supports `auto`, `ipv4`, `ipv6`, `custom`.
+- `egressMode` supports `auto`, `ipv4`, `prefer_ipv6`, `ipv6`, `custom`.
+- Use `prefer_ipv6` for application compatibility: dual-stack targets prefer AAAA/IPv6, while IPv4-only targets can still fall back through system IPv4.
 - `custom` requires `egressInterface`, such as `eth0` or `2600:...`.
 - `apply_config` requires raw GOST JSON in `payload`.
 
@@ -645,7 +646,7 @@ Features:
 
 - Copy install command: use `navigator.clipboard.writeText`.
 - Upgrade outdated agents: call batch task API with nodes whose `agentVersion !== versions.agent`.
-- Sync IPv6 node proxy: send `egressMode: "ipv6"` and leave `egressInterface` empty unless the user chooses custom.
+- Sync IPv6-compatible node proxy: prefer `egressMode: "prefer_ipv6"` for apps that may call IPv4-only targets; use `egressMode: "ipv6"` only when strict AAAA-only IPv6 egress is desired.
 - Custom egress: require interface/IP input before submitting.
 - Delete node/group/pool and uninstall agent: always require confirmation.
 - Failed API response: show the `{error}` body exactly enough for troubleshooting.
@@ -669,7 +670,7 @@ Features:
 - Refreshing the browser keeps the session.
 - User can create a token and copy a working install command.
 - User can assign a node to groups.
-- User can sync node proxy with `auto`, `ipv4`, `ipv6`, and `custom`.
+- User can sync node proxy with `auto`, `ipv4`, `prefer_ipv6`, `ipv6`, and `custom`.
 - User can batch upgrade agents.
 - User can create, update, restart, disable, and delete pools.
 - Pool test commands are copyable and use `api64.ipify.org`.

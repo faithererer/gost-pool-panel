@@ -381,6 +381,8 @@ func resolveEgressInterface(mode, custom string) (string, error) {
 	switch mode {
 	case "", "auto":
 		return "", nil
+	case "prefer_ipv6":
+		return "", nil
 	case "custom":
 		if custom == "" {
 			return "", errors.New("custom egress interface/IP is required")
@@ -409,6 +411,8 @@ func resolverOnlyForEgress(mode, egressInterface string) string {
 		return "ipv4"
 	case "ipv6":
 		return "ipv6"
+	case "prefer_ipv6":
+		return "prefer_ipv6"
 	case "custom":
 		raw := strings.TrimSuffix(strings.TrimSpace(egressInterface), "!")
 		ip, err := netip.ParseAddr(raw)

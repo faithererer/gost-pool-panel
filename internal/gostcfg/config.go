@@ -73,8 +73,9 @@ type Resolver struct {
 }
 
 type Nameserver struct {
-	Addr string `json:"addr"`
-	Only string `json:"only,omitempty"`
+	Addr   string `json:"addr"`
+	Only   string `json:"only,omitempty"`
+	Prefer string `json:"prefer,omitempty"`
 }
 
 func NodeProxy(httpPort, socksPort int, username, password, egressInterface, resolverOnly string) Config {
@@ -111,6 +112,16 @@ func NodeProxy(httpPort, socksPort int, username, password, egressInterface, res
 }
 
 func nodeResolvers(only string) (string, []Resolver) {
+	if only == "prefer_ipv6" {
+		name := "resolver-prefer-ipv6"
+		return name, []Resolver{{
+			Name: name,
+			Nameservers: []Nameserver{{
+				Addr:   "1.1.1.1",
+				Prefer: "ipv6",
+			}},
+		}}
+	}
 	if only != "ipv4" && only != "ipv6" {
 		return "", nil
 	}

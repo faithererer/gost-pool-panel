@@ -123,7 +123,8 @@ journalctl -u gost-pool-agent -f
 
 - `自动`：使用系统路由。
 - `强制 IPv4`：agent 自动从 Linux 路由表选择 IPv4 源地址。
-- `强制 IPv6`：agent 自动从 Linux 路由表选择 IPv6 源地址，并让 GOST 只使用 AAAA 解析结果，适合带住宅 IPv6 的 VPS。
+- `IPv6 优先`：GOST 优先使用 AAAA/IPv6，但 IPv4-only 目标可以回退到系统 IPv4，适合接入兼容性一般的应用。
+- `强制 IPv6`：agent 自动从 Linux 路由表选择 IPv6 源地址，并让 GOST 只使用 AAAA 解析结果，适合明确只走 IPv6 的目标；目标没有 AAAA 记录时会 503。
 - `自定义接口/IP`：手动填写网卡名或本机 IP，例如 `eth0`、`ens3`、`2600:...`。
 
 agent 会在节点 VPS 上执行：
@@ -170,14 +171,14 @@ curl -x "socks5h://用户名:密码@管理端IP:SOCKS5入口端口" https://api6
 curl -x "http://用户名:密码@[2600:1700:abcd::1234]:28080" https://api.ipify.org
 ```
 
-强制 IPv6 时，目标域名必须有 AAAA 记录。测试出口建议使用：
+强制 IPv6 时，目标域名必须有 AAAA 记录。部分应用如果访问 IPv4-only 域名或 IPv4 literal，GOST 会返回 503；这类场景应改用“IPv6 优先”。测试出口建议使用：
 
 ```bash
 curl -x "http://用户名:密码@管理端IP:HTTP入口端口" https://api64.ipify.org
 curl -x "http://用户名:密码@管理端IP:HTTP入口端口" https://api6.ipify.org
 ```
 
-“同步节点代理”任务成功结果里需要看到 `resolver=ipv6`。如果只看到 `egress=IPv6!`，说明节点端 agent 还不是包含 IPv6 resolver 修复的版本。
+“同步节点代理”任务成功结果里，强制 IPv6 会显示 `resolver=ipv6`，IPv6 优先会显示 `resolver=prefer_ipv6`。如果只看到 `egress=IPv6!`，说明节点端 agent 还不是包含 IPv6 resolver 修复的版本。
 
 ### GOST 显示 not installed
 
