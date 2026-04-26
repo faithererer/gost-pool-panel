@@ -5,8 +5,8 @@ services:
     restart: unless-stopped
     network_mode: host
     environment:
-      PANEL_PORT: "3000"
-      PANEL_LISTEN: ":3000"
+      PANEL_PORT: "${PANEL_PORT:-3000}"
+      PANEL_LISTEN: ":${PANEL_PORT:-3000}"
       PANEL_BASE_URL: "${PANEL_BASE_URL:-http://127.0.0.1:3000}"
       PANEL_ADMIN_USER: "${PANEL_ADMIN_USER:-admin}"
       PANEL_ADMIN_PASSWORD: "${PANEL_ADMIN_PASSWORD:-admin123}"

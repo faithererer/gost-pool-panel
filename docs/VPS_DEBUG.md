@@ -1,13 +1,13 @@
 # VPS 调试指南
 
-这份文档用于把管理端部署到 VPS，然后用另一台 Linux VPS 接入为节点。
+这份文档用于把管理端部署到 VPS，然后用另一台 Linux VPS 接入为节点，并验证直连代理和代理池是否可用。
 
 ## 1. 准备管理端 VPS
 
 安装 Docker 和 Docker Compose 插件后，拉取代码：
 
 ```bash
-git clone https://github.com/YOUR_NAME/gost-pool-panel.git
+git clone https://github.com/faithererer/gost-pool-panel.git
 cd gost-pool-panel
 cp .env.example .env
 ```
@@ -32,6 +32,18 @@ PANEL_BASE_URL=http://[2600:1700:abcd::1234]:3000
 
 ```bash
 docker compose --env-file .env up -d --build
+```
+
+如果使用 GHCR 镜像，把 `docker-compose.yml` 里的 `build: .` 换成对应 tag 镜像，例如：
+
+```yaml
+image: ghcr.io/faithererer/gost-pool-panel:v0.3.7
+```
+
+然后启动：
+
+```bash
+docker compose --env-file .env up -d
 ```
 
 默认 `docker-compose.yml` 使用 host network，这样代理池入口端口可以直接监听在管理端 VPS 上。请确认安全组/防火墙放行：
@@ -73,6 +85,8 @@ agent `0.3.3` 起支持管理端远程升级。进入“节点”，任务选择
 agent `0.3.4` 修复 GOST 自动安装时从 `/tmp` 移动到 `/usr/local/bin/gost` 可能出现的 `invalid cross-device link`。如果节点同步代理仍出现该错误，说明节点还在运行旧 agent，需要先升级 agent，再重新下发“同步节点代理”。
 
 agent `0.3.5` 起会上报节点侧 GOST HTTP/SOCKS5 监听端口的入站/出站流量。统计依赖 Linux `iptables`/`ip6tables` 计数规则；如果面板一直显示 `0B`，先确认节点 agent 已升级到 `0.3.5` 或更新版本。
+
+agent `0.3.7` 起支持 `IPv6 优先` 出口模式。它会让 GOST DNS 优先返回 IPv6，但不会强制所有目标只走 IPv6，适合某些应用访问 IPv4-only 目标时避免 503。
 
 确认管理端容器里是否已经是新版本：
 
@@ -150,6 +164,13 @@ gost 3.x active
 4. 如果节点还没 ready，稍后点击“重启入口”。
 
 代理入口账号密码在“设置”页，不是面板登录账号密码。保存设置后，面板会自动给节点下发同步任务，并重启已启用的代理池入口。
+
+面板里复制的节点直连地址和代理池入口地址默认已经包含认证信息，格式类似：
+
+```text
+http://proxy:password@8.209.236.102:18080
+socks5h://proxy:password@8.209.236.102:18081
+```
 
 测试 HTTP 入口：
 
@@ -235,3 +256,41 @@ curl -I http://你的管理端公网IP:3000/install.sh
 ```
 
 如果访问失败，优先检查防火墙、安全组、反代配置。
+
+### 代理返回 407
+
+`407 Proxy Authentication Required` 表示代理入口能连上，但账号密码错误或客户端没有携带代理认证。请使用“设置”页里的代理账号密码，不是面板登录账号密码。
+
+推荐复制面板提供的完整代理 URL：
+
+```text
+http://用户名:密码@IP:端口
+```
+
+### 代理返回 503
+
+`503` 一般表示 GOST 已收到请求，但连接目标或上游失败。常见原因：
+
+- 节点没有同步成功，GOST 未运行。
+- 代理池没有可用节点。
+- 节点安全组没有放行节点侧代理端口，管理端连不上节点。
+- 强制 IPv6 出口访问了 IPv4-only 目标。
+
+如果“强制 IPv6”下 `curl https://api64.ipify.org` 正常，但某些应用报 503，优先把节点出口网络改成 `IPv6 优先`，然后重新下发“同步节点代理”。
+
+### 流量一直是 0B
+
+确认节点 agent 版本：
+
+```bash
+/opt/gost-pool-agent/gost-pool-agent --version
+```
+
+需要 `0.3.5` 或更新版本。然后在节点上检查计数规则：
+
+```bash
+iptables-save -c | grep gost-pool-panel
+ip6tables-save -c | grep gost-pool-panel
+```
+
+新 agent 第一次运行会先建立计数基线。跑一次代理请求后，等待下一轮心跳再看面板。

@@ -1,8 +1,8 @@
-# Frontend API Guide
+# Frontend API Reference
 
-This document is the handoff contract for building a modern frontend for GOST Pool Panel.
+This document is the API reference for the React admin frontend and future UI maintenance.
 
-The backend is a Go single process. The old server-rendered pages still exist for compatibility, but new UI work should use the JSON APIs below.
+The backend is a Go single process. The React frontend should use the JSON APIs below and treat `/api/admin/state` as the primary bootstrap endpoint.
 
 ## Product Context
 
@@ -187,7 +187,7 @@ export interface State {
 Notes:
 
 - `nodes[].agentToken` is intentionally blank in admin responses.
-- `settings.proxyPassword` is returned for the single-admin MVP. Mask it by default in the UI.
+- `settings.proxyPassword` is returned for the single-admin product model. Mask it by default in the UI.
 - Timestamps are JSON `time.Time` strings. Zero values may appear as `0001-01-01T00:00:00Z`.
 
 ## State and Version
@@ -651,18 +651,15 @@ Features:
 - Delete node/group/pool and uninstall agent: always require confirmation.
 - Failed API response: show the `{error}` body exactly enough for troubleshooting.
 
-## Suggested Frontend Build Order
+## Frontend Maintenance Notes
 
-1. API client, login, session guard.
-2. Global layout and `/api/admin/state` loading.
-3. Dashboard.
-4. Nodes with single-node task actions.
-5. Tokens and install command copy.
-6. Groups.
-7. Pools and test command copy.
-8. Tasks with retry.
-9. Settings.
-10. Batch actions, filters, empty states, mobile layout polish.
+- Prefer `/api/admin/state` for initial page data and periodic refreshes.
+- Keep proxy address copying centralized in `frontend/src/lib/proxy.ts`.
+- Proxy URLs shown to users should include authentication: `protocol://user:pass@host:port`.
+- For IPv6 hosts, always use bracketed host syntax: `[IPv6]:PORT`.
+- Destructive actions should use confirmation dialogs.
+- Failed API responses should surface the backend `{error}` message.
+- New node task controls must stay aligned with `egressMode` values in this document.
 
 ## Acceptance Checklist
 
