@@ -366,8 +366,15 @@ fi
 
 mkdir -p "$INSTALL_DIR"
 echo "Downloading agent from $SERVER/downloads/$BIN"
-curl -fsSL "$SERVER/downloads/$BIN" -o "$INSTALL_DIR/gost-pool-agent"
-chmod +x "$INSTALL_DIR/gost-pool-agent"
+TMP_AGENT="$(mktemp "$INSTALL_DIR/gost-pool-agent.XXXXXX")"
+cleanup_tmp_agent() {
+  rm -f "$TMP_AGENT"
+}
+trap cleanup_tmp_agent EXIT
+curl -fsSL "$SERVER/downloads/$BIN" -o "$TMP_AGENT"
+chmod +x "$TMP_AGENT"
+mv -f "$TMP_AGENT" "$INSTALL_DIR/gost-pool-agent"
+trap - EXIT
 
 cat > "$INSTALL_DIR/agent.env" <<EOF
 GPP_SERVER=$SERVER

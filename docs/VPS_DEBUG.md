@@ -103,6 +103,18 @@ docker exec -it gost-pool-panel ls -lah /app/dist
 docker compose --env-file .env up -d --build
 ```
 
+### curl: (23) Failure writing output to destination
+
+这通常是重复安装/升级时，旧的 `gost-pool-agent` 进程还在运行，脚本直接覆盖正在执行的二进制导致写入失败。
+
+新版安装脚本会先下载到临时文件，再原子替换 agent 二进制。更新管理端镜像后重新执行一键安装命令即可。
+
+如果你仍在旧镜像上，可以先手动停掉旧 agent，再重新执行安装命令：
+
+```bash
+systemctl stop gost-pool-agent
+```
+
 ### 节点注册失败
 
 确认：
