@@ -10,9 +10,9 @@ import (
 )
 
 type viewData struct {
-	State       model.State
-	BaseURL     string
-	InstallCmds map[string]string
+	State        model.State
+	BaseURL      string
+	InstallCmds  map[string]string
 	PanelVersion string
 	AgentVersion string
 }

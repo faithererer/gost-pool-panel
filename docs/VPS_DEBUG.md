@@ -117,7 +117,7 @@ journalctl -u gost-pool-agent -f
 
 - `自动`：使用系统路由。
 - `强制 IPv4`：agent 自动从 Linux 路由表选择 IPv4 源地址。
-- `强制 IPv6`：agent 自动从 Linux 路由表选择 IPv6 源地址，适合带住宅 IPv6 的 VPS。
+- `强制 IPv6`：agent 自动从 Linux 路由表选择 IPv6 源地址，并让 GOST 只使用 AAAA 解析结果，适合带住宅 IPv6 的 VPS。
 - `自定义接口/IP`：手动填写网卡名或本机 IP，例如 `eth0`、`ens3`、`2600:...`。
 
 agent 会在节点 VPS 上执行：
@@ -162,6 +162,13 @@ curl -x socks5h://管理端IP:SOCKS5入口端口 -U '用户名:密码' https://a
 
 ```bash
 curl -x http://[2600:1700:abcd::1234]:28080 -U '用户名:密码' https://api.ipify.org
+```
+
+强制 IPv6 时，目标域名必须有 AAAA 记录。测试出口建议使用：
+
+```bash
+curl -x http://管理端IP:HTTP入口端口 -U '用户名:密码' https://api64.ipify.org
+curl -x http://管理端IP:HTTP入口端口 -U '用户名:密码' https://api6.ipify.org
 ```
 
 ### GOST 显示 not installed

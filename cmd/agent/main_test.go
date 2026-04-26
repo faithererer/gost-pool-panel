@@ -29,3 +29,17 @@ func TestResolveEgressInterfaceCustom(t *testing.T) {
 		t.Fatalf("resolveEgressInterface() = %q, want eth0", got)
 	}
 }
+
+func TestResolverOnlyForEgressIPv6(t *testing.T) {
+	got := resolverOnlyForEgress("ipv6", "2600:1700:abcd::1234!")
+	if got != "ipv6" {
+		t.Fatalf("resolverOnlyForEgress() = %q, want ipv6", got)
+	}
+}
+
+func TestResolverOnlyForCustomIPv6Address(t *testing.T) {
+	got := resolverOnlyForEgress("custom", "2600:1700:abcd::1234")
+	if got != "ipv6" {
+		t.Fatalf("resolverOnlyForEgress() = %q, want ipv6", got)
+	}
+}

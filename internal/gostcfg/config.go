@@ -3,16 +3,18 @@ package gostcfg
 import "strconv"
 
 type Config struct {
-	Services []Service `json:"services"`
-	Chains   []Chain   `json:"chains,omitempty"`
+	Services  []Service  `json:"services"`
+	Chains    []Chain    `json:"chains,omitempty"`
+	Resolvers []Resolver `json:"resolvers,omitempty"`
 }
 
 type Service struct {
-	Name     string         `json:"name"`
-	Addr     string         `json:"addr"`
-	Handler  Handler        `json:"handler"`
-	Listener Listener       `json:"listener"`
-	Metadata map[string]any `json:"metadata,omitempty"`
+	Name      string   `json:"name"`
+	Addr      string   `json:"addr"`
+	Handler   Handler  `json:"handler"`
+	Listener  Listener `json:"listener"`
+	Interface string   `json:"interface,omitempty"`
+	Resolver  string   `json:"resolver,omitempty"`
 }
 
 type Handler struct {
@@ -65,9 +67,19 @@ type Selector struct {
 	FailTimeout string `json:"failTimeout,omitempty"`
 }
 
-func NodeProxy(httpPort, socksPort int, username, password, egressInterface string) Config {
+type Resolver struct {
+	Name        string       `json:"name"`
+	Nameservers []Nameserver `json:"nameservers"`
+}
+
+type Nameserver struct {
+	Addr string `json:"addr"`
+	Only string `json:"only,omitempty"`
+}
+
+func NodeProxy(httpPort, socksPort int, username, password, egressInterface, resolverOnly string) Config {
 	auth := &Auth{Username: username, Password: password}
-	metadata := serviceMetadata(egressInterface)
+	resolverName, resolvers := nodeResolvers(resolverOnly)
 	services := make([]Service, 0, 2)
 	if httpPort > 0 {
 		services = append(services, Service{
@@ -77,8 +89,9 @@ func NodeProxy(httpPort, socksPort int, username, password, egressInterface stri
 				Type: "http",
 				Auth: auth,
 			},
-			Listener: Listener{Type: "tcp"},
-			Metadata: metadata,
+			Listener:  Listener{Type: "tcp"},
+			Interface: egressInterface,
+			Resolver:  resolverName,
 		})
 	}
 	if socksPort > 0 {
@@ -89,16 +102,24 @@ func NodeProxy(httpPort, socksPort int, username, password, egressInterface stri
 				Type: "socks5",
 				Auth: auth,
 			},
-			Listener: Listener{Type: "tcp"},
-			Metadata: metadata,
+			Listener:  Listener{Type: "tcp"},
+			Interface: egressInterface,
+			Resolver:  resolverName,
 		})
 	}
-	return Config{Services: services}
+	return Config{Services: services, Resolvers: resolvers}
 }
 
-func serviceMetadata(egressInterface string) map[string]any {
-	if egressInterface == "" {
-		return nil
+func nodeResolvers(only string) (string, []Resolver) {
+	if only != "ipv4" && only != "ipv6" {
+		return "", nil
 	}
-	return map[string]any{"interface": egressInterface}
+	name := "resolver-" + only
+	return name, []Resolver{{
+		Name: name,
+		Nameservers: []Nameserver{{
+			Addr: "1.1.1.1",
+			Only: only,
+		}},
+	}}
 }

@@ -142,7 +142,7 @@ ghcr.io/YOUR_NAME/gost-pool-panel:v0.1.0
 
 - `自动`：交给系统路由和 GOST 默认行为。
 - `强制 IPv4`：agent 自动选择本机 IPv4 源地址作为 GOST 出口。
-- `强制 IPv6`：agent 自动选择本机 IPv6 源地址作为 GOST 出口。
+- `强制 IPv6`：agent 自动选择本机 IPv6 源地址作为 GOST 出口，并让 GOST 只使用 AAAA 解析结果。
 - `自定义接口/IP`：手动填写网卡名或本机 IP，例如 `eth0` 或 `2600:...`。
 
 节点端安装脚本会：

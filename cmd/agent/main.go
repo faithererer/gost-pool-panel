@@ -258,7 +258,8 @@ func (a *Agent) syncNodeProxy(payload string) (string, string, string) {
 	if err != nil {
 		return model.TaskStatusFailed, "", err.Error()
 	}
-	cfg := gostcfg.NodeProxy(p.HTTPPort, p.SocksPort, p.Username, p.Password, egressInterface)
+	resolverOnly := resolverOnlyForEgress(p.EgressMode, egressInterface)
+	cfg := gostcfg.NodeProxy(p.HTTPPort, p.SocksPort, p.Username, p.Password, egressInterface, resolverOnly)
 	b, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return model.TaskStatusFailed, "", err.Error()
@@ -281,7 +282,10 @@ func (a *Agent) syncNodeProxy(payload string) (string, string, string) {
 	if egressInterface == "" {
 		egressInterface = "auto"
 	}
-	return model.TaskStatusSuccess, fmt.Sprintf("GOST proxy synced: http=%d socks5=%d version=%s egress=%s", p.HTTPPort, p.SocksPort, p.GostVersion, egressInterface), ""
+	if resolverOnly == "" {
+		resolverOnly = "auto"
+	}
+	return model.TaskStatusSuccess, fmt.Sprintf("GOST proxy synced: http=%d socks5=%d version=%s egress=%s resolver=%s", p.HTTPPort, p.SocksPort, p.GostVersion, egressInterface, resolverOnly), ""
 }
 
 func resolveEgressInterface(mode, custom string) (string, error) {
@@ -310,6 +314,28 @@ func resolveEgressInterface(mode, custom string) (string, error) {
 	default:
 		return "", fmt.Errorf("unsupported egress mode: %s", mode)
 	}
+}
+
+func resolverOnlyForEgress(mode, egressInterface string) string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case "ipv4":
+		return "ipv4"
+	case "ipv6":
+		return "ipv6"
+	case "custom":
+		raw := strings.TrimSuffix(strings.TrimSpace(egressInterface), "!")
+		ip, err := netip.ParseAddr(raw)
+		if err != nil {
+			return ""
+		}
+		if ip.Is4() {
+			return "ipv4"
+		}
+		if ip.Is6() {
+			return "ipv6"
+		}
+	}
+	return ""
 }
 
 func localRouteSourceIP(family string) (string, error) {
