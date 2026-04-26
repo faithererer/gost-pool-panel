@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { PowerOff, RefreshCw, RotateCw, Search, Server, SlidersHorizontal, Trash2, Wrench } from 'lucide-react';
+import { Copy, PowerOff, RefreshCw, RotateCw, Search, Server, SlidersHorizontal, Terminal, Trash2, Wrench } from 'lucide-react';
 import { api } from '../api';
 import { useAppContext } from '../api/AppContext';
 import { Node } from '../api/types';
@@ -9,6 +9,8 @@ import { Card, CardContent } from '../components/ui/card';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { Input } from '../components/ui/input';
 import { Modal } from '../components/ui/modal';
+import { copyText } from '../lib/clipboard';
+import { ProxyProtocol, proxyTestCommand, proxyURL } from '../lib/proxy';
 
 type SyncForm = {
   node: Node;
@@ -32,6 +34,10 @@ function formatBytes(value: number) {
     unit += 1;
   }
   return `${size.toFixed(unit === 0 ? 0 : 1)} ${units[unit]}`;
+}
+
+function proxyLabel(protocol: ProxyProtocol) {
+  return protocol === 'http' ? 'HTTP' : 'SOCKS5';
 }
 
 export default function Nodes() {
@@ -131,6 +137,32 @@ export default function Nodes() {
     .filter((node) => node.gostStatus !== 'agent uninstalled')
     .map((node) => node.id);
 
+  const copyProxyText = async (text: string, title: string) => {
+    const ok = await copyText(text);
+    notify(ok
+      ? { type: 'success', title }
+      : { type: 'error', title: '复制失败', message: '浏览器限制了剪贴板访问，请手动复制。' });
+  };
+
+  const copyDirectAddress = async (node: Node, protocol: ProxyProtocol, port: number) => {
+    if (!node.publicIp) {
+      notify({ type: 'error', title: '缺少节点公网 IP', message: '面板还没有收到该节点的公网地址。' });
+      return;
+    }
+    await copyProxyText(proxyURL(protocol, node.publicIp, port), `${node.name} ${proxyLabel(protocol)} 地址已复制`);
+  };
+
+  const copyDirectTestCommand = async (node: Node, protocol: ProxyProtocol, port: number) => {
+    if (!node.publicIp) {
+      notify({ type: 'error', title: '缺少节点公网 IP', message: '面板还没有收到该节点的公网地址。' });
+      return;
+    }
+    await copyProxyText(
+      proxyTestCommand(protocol, node.publicIp, port, state.settings),
+      `${node.name} ${proxyLabel(protocol)} 测试命令已复制`
+    );
+  };
+
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="space-y-6">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -182,6 +214,10 @@ export default function Nodes() {
         {filteredNodes.map((node, index) => {
           const groups = groupNames(node);
           const status = node.gostStatus || 'unknown';
+          const directEndpoints = [
+            { label: 'HTTP', protocol: 'http' as const, port: node.httpPort },
+            { label: 'SOCKS5', protocol: 'socks5h' as const, port: node.socksPort },
+          ].filter((endpoint) => endpoint.port > 0);
           return (
             <motion.div
               key={node.id}
@@ -232,6 +268,32 @@ export default function Nodes() {
                     今日：{formatBytes(node.todayUploadBytes)} 上行 / {formatBytes(node.todayDownloadBytes)} 下行
                     <br />
                     累计：{formatBytes(node.totalUploadBytes)} 上行 / {formatBytes(node.totalDownloadBytes)} 下行
+                  </div>
+
+                  <div className="mt-4 rounded-md border bg-background/40 p-3">
+                    <div className="mb-2 text-xs font-medium text-muted-foreground">直连代理</div>
+                    {node.publicIp && directEndpoints.length > 0 ? (
+                      <div className="space-y-2">
+                        {directEndpoints.map((endpoint) => {
+                          const address = proxyURL(endpoint.protocol, node.publicIp, endpoint.port);
+                          return (
+                            <div key={endpoint.protocol} className="grid grid-cols-[52px_minmax(0,1fr)_32px_74px] items-center gap-2 text-xs">
+                              <span className="text-muted-foreground">{endpoint.label}</span>
+                              <code className="truncate rounded bg-muted px-2 py-1 font-mono text-foreground" title={address}>{address}</code>
+                              <Button variant="ghost" size="icon" className="h-8 w-8" title="复制代理地址" onClick={() => copyDirectAddress(node, endpoint.protocol, endpoint.port)}>
+                                <Copy className="h-3.5 w-3.5" />
+                              </Button>
+                              <Button variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => copyDirectTestCommand(node, endpoint.protocol, endpoint.port)}>
+                                <Terminal className="mr-1 h-3.5 w-3.5" />
+                                测试
+                              </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">暂无可用直连地址，等待节点上报公网 IP 和端口。</p>
+                    )}
                   </div>
 
                   <div className="mt-auto flex flex-wrap gap-2 border-t border-border pt-4">

@@ -1,21 +1,21 @@
 import { useState } from 'react';
-import { useAppContext } from '../api/AppContext';
-import { Card, CardContent } from '../components/ui/card';
-import { Button } from '../components/ui/button';
-import { Network, Play, Square, Copy, RefreshCw, Trash2, Edit } from 'lucide-react';
-import { Input } from '../components/ui/input';
 import { motion } from 'framer-motion';
+import { Copy, Edit, Network, Play, RefreshCw, Square, Terminal, Trash2 } from 'lucide-react';
 import { api } from '../api';
+import { useAppContext } from '../api/AppContext';
+import { Button } from '../components/ui/button';
+import { Card, CardContent } from '../components/ui/card';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
+import { Input } from '../components/ui/input';
 import { Modal } from '../components/ui/modal';
 import { copyText } from '../lib/clipboard';
+import { hostFromBaseURL, ProxyProtocol, proxyTestCommand, proxyURL } from '../lib/proxy';
 
 export default function Pools() {
   const { state, refreshState, notify } = useAppContext();
   const [isCreating, setIsCreating] = useState(false);
   const [editingPool, setEditingPool] = useState<any>(null);
   const [deletingPool, setDeletingPool] = useState<any>(null);
-
   const [name, setName] = useState('');
   const [groupIds, setGroupIds] = useState<string[]>([]);
   const [httpPort, setHttpPort] = useState(18080);
@@ -24,6 +24,17 @@ export default function Pools() {
   const [enabled, setEnabled] = useState(true);
 
   if (!state) return null;
+
+  const poolHost = hostFromBaseURL(state.baseURL, window.location.hostname);
+
+  const resetForm = () => {
+    setName('');
+    setGroupIds([]);
+    setHttpPort(18080);
+    setSocksPort(18081);
+    setStrategy('round');
+    setEnabled(true);
+  };
 
   const handleCreate = async () => {
     try {
@@ -76,15 +87,6 @@ export default function Pools() {
     }
   };
 
-  const resetForm = () => {
-    setName('');
-    setGroupIds([]);
-    setHttpPort(18080);
-    setSocksPort(18081);
-    setStrategy('round');
-    setEnabled(true);
-  };
-
   const openEdit = (pool: any) => {
     setEditingPool(pool);
     setName(pool.name);
@@ -95,17 +97,23 @@ export default function Pools() {
     setEnabled(pool.enabled);
   };
 
-  const quoteForCurl = (value: string) => `"${value.replace(/(["\\])/g, '\\$1')}"`;
-
-  const copyTestCommand = async (port: number, protocol: string) => {
-    const host = window.location.hostname;
-    const auth = state.settings?.proxyUsername ? `--proxy-user ${quoteForCurl(`${state.settings.proxyUsername}:${state.settings.proxyPassword || 'PASSWORD'}`)} ` : '';
-    const ip = host.includes(':') ? `[${host}]` : host;
-    const command = `curl -x ${protocol}://${ip}:${port} ${auth}https://api64.ipify.org`;
-    const ok = await copyText(command);
+  const copyProxyText = async (text: string, title: string, message?: string) => {
+    const ok = await copyText(text);
     notify(ok
-      ? { type: 'success', title: `${protocol.toUpperCase()} 测试命令已复制`, message: '可直接在终端粘贴执行。' }
-      : { type: 'error', title: '复制失败', message: '浏览器限制了剪贴板访问，请手动复制测试命令。' });
+      ? { type: 'success', title, message }
+      : { type: 'error', title: '复制失败', message: '浏览器限制了剪贴板访问，请手动复制。' });
+  };
+
+  const copyPoolAddress = async (protocol: ProxyProtocol, port: number) => {
+    await copyProxyText(proxyURL(protocol, poolHost, port), `${protocol === 'http' ? 'HTTP' : 'SOCKS5'} 入口地址已复制`);
+  };
+
+  const copyTestCommand = async (protocol: ProxyProtocol, port: number) => {
+    await copyProxyText(
+      proxyTestCommand(protocol, poolHost, port, state.settings),
+      `${protocol.toUpperCase()} 测试命令已复制`,
+      '可直接在终端粘贴执行。'
+    );
   };
 
   return (
@@ -116,72 +124,87 @@ export default function Pools() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {state.pools.map((pool, i) => (
-          <motion.div
-            key={pool.id}
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.2, delay: i * 0.05 }}
-          >
-            <Card className="hover:border-primary/50 transition-colors">
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <Network className="h-5 w-5 text-primary" />
-                      <h3 className="font-semibold text-lg">{pool.name}</h3>
+        {state.pools.map((pool, index) => {
+          const endpoints = [
+            { label: 'HTTP', protocol: 'http' as const, port: pool.httpPort },
+            { label: 'SOCKS5', protocol: 'socks5h' as const, port: pool.socksPort },
+          ].filter((endpoint) => endpoint.port > 0);
+
+          return (
+            <motion.div
+              key={pool.id}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.2, delay: index * 0.05 }}
+            >
+              <Card className="hover:border-primary/50 transition-colors">
+                <CardContent className="p-6">
+                  <div className="flex items-start justify-between">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Network className="h-5 w-5 text-primary" />
+                        <h3 className="font-semibold text-lg">{pool.name}</h3>
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <Button variant="ghost" size="icon" onClick={() => handleRestart(pool.id)} title="重启 Runtime">
+                        <RefreshCw className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onClick={() => openEdit(pool)} title="编辑">
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => setDeletingPool(pool)} title="删除">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex gap-1">
-                    <Button variant="ghost" size="icon" onClick={() => handleRestart(pool.id)} title="重启 Runtime">
-                      <RefreshCw className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" onClick={() => openEdit(pool)} title="编辑">
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => setDeletingPool(pool)} title="删除">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
 
-                <div className="flex items-center gap-2 mt-2 mb-4">
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1 ${pool.enabled ? 'bg-green-500/10 text-green-500' : 'bg-muted text-muted-foreground'}`}>
-                    {pool.enabled ? <Play className="h-3 w-3" /> : <Square className="h-3 w-3" />}
-                    {pool.enabled ? '已启用' : '已禁用'}
-                  </span>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${pool.runtimeStatus === 'running' ? 'bg-indigo-500/10 text-indigo-500' : pool.runtimeStatus === 'disabled' ? 'bg-muted text-muted-foreground' : 'bg-destructive/10 text-destructive'}`}>
-                    Runtime: {pool.runtimeStatus}
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground">
-                    策略: {pool.strategy}
-                  </span>
-                </div>
+                  <div className="flex items-center gap-2 mt-2 mb-4">
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium flex items-center gap-1 ${pool.enabled ? 'bg-green-500/10 text-green-500' : 'bg-muted text-muted-foreground'}`}>
+                      {pool.enabled ? <Play className="h-3 w-3" /> : <Square className="h-3 w-3" />}
+                      {pool.enabled ? '已启用' : '已禁用'}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${pool.runtimeStatus === 'running' ? 'bg-indigo-500/10 text-indigo-500' : pool.runtimeStatus === 'disabled' ? 'bg-muted text-muted-foreground' : 'bg-destructive/10 text-destructive'}`}>
+                      Runtime: {pool.runtimeStatus}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-secondary text-secondary-foreground">
+                      策略: {pool.strategy}
+                    </span>
+                  </div>
 
-                {pool.runtimeError && (
-                  <div className="bg-destructive/10 text-destructive text-xs p-2 rounded mb-4 break-words">
-                    Error: {pool.runtimeError}
-                  </div>
-                )}
+                  {pool.runtimeError && (
+                    <div className="bg-destructive/10 text-destructive text-xs p-2 rounded mb-4 break-words">
+                      Error: {pool.runtimeError}
+                    </div>
+                  )}
 
-                <div className="grid grid-cols-2 gap-2 text-sm border-t border-border pt-4">
-                  <div className="flex flex-col gap-2">
-                    <span className="text-muted-foreground">HTTP 端口: <span className="text-foreground font-mono">{pool.httpPort}</span></span>
-                    <Button variant="outline" size="sm" className="w-full h-8 text-xs" onClick={() => copyTestCommand(pool.httpPort, 'http')}>
-                      <Copy className="h-3 w-3 mr-1" /> 测试 HTTP
-                    </Button>
+                  <div className="space-y-2 border-t border-border pt-4">
+                    <div className="text-xs font-medium text-muted-foreground">代理池入口</div>
+                    {endpoints.map((endpoint) => {
+                      const address = proxyURL(endpoint.protocol, poolHost, endpoint.port);
+                      return (
+                        <div key={endpoint.protocol} className="grid grid-cols-[52px_minmax(0,1fr)_32px_74px] items-center gap-2 text-xs">
+                          <span className="text-muted-foreground">{endpoint.label}</span>
+                          <code className="truncate rounded bg-muted px-2 py-1 font-mono text-foreground" title={address}>{address}</code>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" title="复制入口地址" onClick={() => copyPoolAddress(endpoint.protocol, endpoint.port)}>
+                            <Copy className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button variant="outline" size="sm" className="h-8 px-2 text-xs" onClick={() => copyTestCommand(endpoint.protocol, endpoint.port)}>
+                            <Terminal className="mr-1 h-3.5 w-3.5" />
+                            测试
+                          </Button>
+                        </div>
+                      );
+                    })}
+                    {endpoints.length === 0 && (
+                      <p className="text-xs text-muted-foreground">该代理池未配置入口端口。</p>
+                    )}
                   </div>
-                  <div className="flex flex-col gap-2">
-                    <span className="text-muted-foreground">SOCKS5 端口: <span className="text-foreground font-mono">{pool.socksPort}</span></span>
-                    <Button variant="outline" size="sm" className="w-full h-8 text-xs" onClick={() => copyTestCommand(pool.socksPort, 'socks5h')}>
-                      <Copy className="h-3 w-3 mr-1" /> 测试 SOCKS
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        ))}
+                </CardContent>
+              </Card>
+            </motion.div>
+          );
+        })}
       </div>
 
       {state.pools.length === 0 && (
@@ -194,7 +217,7 @@ export default function Pools() {
       <Modal
         isOpen={isCreating || !!editingPool}
         onClose={() => { setIsCreating(false); setEditingPool(null); }}
-        title={editingPool ? "编辑代理池" : "创建代理池"}
+        title={editingPool ? '编辑代理池' : '创建代理池'}
         footer={
           <>
             <Button variant="outline" onClick={() => { setIsCreating(false); setEditingPool(null); }}>取消</Button>
@@ -235,18 +258,18 @@ export default function Pools() {
             <label className="text-sm font-medium">选择分组 (上游节点来源)</label>
             <div className="max-h-32 overflow-y-auto border border-input rounded-md p-2 space-y-1">
               {state.groups.length === 0 && <p className="text-xs text-muted-foreground p-1">没有可用的分组</p>}
-              {state.groups.map(g => (
-                <label key={g.id} className="flex items-center gap-2 text-sm p-1 hover:bg-muted rounded">
+              {state.groups.map((group) => (
+                <label key={group.id} className="flex items-center gap-2 text-sm p-1 hover:bg-muted rounded">
                   <input
                     type="checkbox"
                     className="rounded border-input text-primary focus:ring-primary"
-                    checked={groupIds.includes(g.id)}
+                    checked={groupIds.includes(group.id)}
                     onChange={(e) => {
-                      if (e.target.checked) setGroupIds([...groupIds, g.id]);
-                      else setGroupIds(groupIds.filter(id => id !== g.id));
+                      if (e.target.checked) setGroupIds([...groupIds, group.id]);
+                      else setGroupIds(groupIds.filter((id) => id !== group.id));
                     }}
                   />
-                  {g.name}
+                  {group.name}
                 </label>
               ))}
             </div>
@@ -272,7 +295,6 @@ export default function Pools() {
         description={`您即将删除代理池 ${deletingPool?.name}。这会停止该池的所有代理流量，并删除其配置。`}
         onConfirm={handleDelete}
       />
-
     </motion.div>
   );
 }
