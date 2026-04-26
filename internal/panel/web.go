@@ -299,8 +299,26 @@ const poolsHTML = `{{define "content"}}
 </div>
 <div style="height:14px"></div>
 <table>
-  <thead><tr><th>名称</th><th>端口</th><th>分组 ID</th><th>状态</th><th>操作</th></tr></thead>
-  <tbody>{{range .State.Pools}}<tr><td>{{.Name}}</td><td>HTTP {{.HTTPPort}}<br>SOCKS5 {{.SocksPort}}</td><td>{{join .GroupIDs ", "}}</td><td>{{if .Enabled}}启用{{else}}停用{{end}}<div class="muted">{{.RuntimeStatus}} {{.RuntimeError}}</div></td><td><form method="post" action="/pools/restart"><input type="hidden" name="pool_id" value="{{.ID}}"><button type="submit">重启入口</button></form></td></tr>{{else}}<tr><td colspan="5">暂无代理池。</td></tr>{{end}}</tbody>
+  <thead><tr><th>名称</th><th>端口</th><th>分组 ID</th><th>状态</th><th>测试命令</th><th>操作</th></tr></thead>
+  <tbody>
+  {{$host := proxyHost .BaseURL}}
+  {{$auth := shellQuote (userPass .State.Settings)}}
+  {{range .State.Pools}}
+    <tr>
+      <td>{{.Name}}</td>
+      <td>HTTP {{.HTTPPort}}<br>SOCKS5 {{.SocksPort}}</td>
+      <td>{{join .GroupIDs ", "}}</td>
+      <td>{{if .Enabled}}启用{{else}}停用{{end}}<div class="muted">{{.RuntimeStatus}} {{.RuntimeError}}</div></td>
+      <td>
+        {{if gt .HTTPPort 0}}<pre>curl -x http://{{$host}}:{{.HTTPPort}} -U {{$auth}} https://api.ipify.org</pre>{{end}}
+        {{if gt .SocksPort 0}}<pre>curl -x socks5h://{{$host}}:{{.SocksPort}} -U {{$auth}} https://api.ipify.org</pre>{{end}}
+      </td>
+      <td><form method="post" action="/pools/restart"><input type="hidden" name="pool_id" value="{{.ID}}"><button type="submit">重启入口</button></form></td>
+    </tr>
+  {{else}}
+    <tr><td colspan="6">暂无代理池。</td></tr>
+  {{end}}
+  </tbody>
 </table>
 {{end}}`
 
@@ -325,7 +343,7 @@ const settingsHTML = `{{define "content"}}
       <div><label>用户名</label><input name="proxy_username" value="{{.State.Settings.ProxyUsername}}"></div>
       <div><label>密码</label><input name="proxy_password" value="{{.State.Settings.ProxyPassword}}"></div>
     </div>
-    <p class="muted">第一版全局一组账号密码，后续代理池生成中心 GOST 入口配置时会使用这里的值。</p>
+    <p class="muted">这是代理入口账号密码，不是面板登录账号。保存后会自动给节点下发同步任务，并重启已启用代理池入口。</p>
     <button type="submit">保存</button>
   </form>
 </div>

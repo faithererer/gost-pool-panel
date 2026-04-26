@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -205,6 +206,11 @@ func (s *Server) handleFormPost(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		if _, err := s.syncAllNodeProxyTasks(); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		s.restartEnabledPoolRuntimes()
 		http.Redirect(w, r, "/settings", http.StatusFound)
 	default:
 		http.NotFound(w, r)
@@ -464,6 +470,34 @@ func (s *Server) defaultNodeProxyPayload(node model.Node) map[string]any {
 	}
 }
 
+func (s *Server) syncAllNodeProxyTasks() (int, error) {
+	state := s.store.Snapshot()
+	count := 0
+	for _, n := range state.Nodes {
+		if n.GostStatus == "agent uninstalled" {
+			continue
+		}
+		if _, err := s.store.CreateTaskFromPayload(n.ID, "sync_node_proxy", s.defaultNodeProxyPayload(n)); err != nil {
+			return count, err
+		}
+		count++
+	}
+	return count, nil
+}
+
+func (s *Server) restartEnabledPoolRuntimes() {
+	state := s.store.Snapshot()
+	for _, p := range state.Pools {
+		if !p.Enabled {
+			continue
+		}
+		if err := s.restartPoolRuntime(p.ID); err != nil {
+			// restartPoolRuntime records the user-visible status on the pool.
+			continue
+		}
+	}
+}
+
 func (s *Server) signSession(expires time.Time) string {
 	payload := fmt.Sprintf("%s|%d", s.cfg.AdminUser, expires.Unix())
 	mac := hmac.New(sha256.New, []byte(s.cfg.Secret))
@@ -543,6 +577,9 @@ func renderTemplate(w http.ResponseWriter, title string, data any, body string) 
 		"contains":    contains,
 		"join":        strings.Join,
 		"gostText":    gostText,
+		"proxyHost":   proxyHost,
+		"shellQuote":  shellQuote,
+		"userPass":    userPass,
 	}
 	t := template.Must(template.New("page").Funcs(funcs).Parse(baseHTML + body))
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -596,4 +633,16 @@ func gostText(version, status string) string {
 		return version
 	}
 	return strings.TrimSpace(version + " " + status)
+}
+
+func proxyHost(baseURL string) string {
+	u, err := url.Parse(baseURL)
+	if err != nil || u.Hostname() == "" {
+		return "PANEL_IP"
+	}
+	return u.Hostname()
+}
+
+func userPass(settings model.Settings) string {
+	return settings.ProxyUsername + ":" + settings.ProxyPassword
 }

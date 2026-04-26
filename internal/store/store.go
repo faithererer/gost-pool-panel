@@ -39,8 +39,8 @@ func (s *Store) load() error {
 	if errors.Is(err, os.ErrNotExist) {
 		s.state = model.State{
 			Settings: model.Settings{
-				ProxyUsername: "proxy",
-				ProxyPassword: randomID("pass"),
+				ProxyUsername: defaultProxyUsername(),
+				ProxyPassword: defaultProxyPassword(),
 			},
 		}
 		return s.saveLocked()
@@ -84,10 +84,10 @@ func (s *Store) saveLocked() error {
 
 func (s *Store) ensureDefaultsLocked() {
 	if s.state.Settings.ProxyUsername == "" {
-		s.state.Settings.ProxyUsername = "proxy"
+		s.state.Settings.ProxyUsername = defaultProxyUsername()
 	}
 	if s.state.Settings.ProxyPassword == "" {
-		s.state.Settings.ProxyPassword = randomID("pass")
+		s.state.Settings.ProxyPassword = defaultProxyPassword()
 	}
 }
 
@@ -475,6 +475,20 @@ func randomID(prefix string) string {
 		return prefix + "_" + time.Now().UTC().Format("20060102150405")
 	}
 	return prefix + "_" + hex.EncodeToString(b[:])
+}
+
+func defaultProxyUsername() string {
+	if v := os.Getenv("PANEL_PROXY_USERNAME"); v != "" {
+		return v
+	}
+	return "proxy"
+}
+
+func defaultProxyPassword() string {
+	if v := os.Getenv("PANEL_PROXY_PASSWORD"); v != "" {
+		return v
+	}
+	return randomID("pass")
 }
 
 func cloneState(in model.State) model.State {

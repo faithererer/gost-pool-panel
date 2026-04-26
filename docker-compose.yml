@@ -11,6 +11,8 @@ services:
       PANEL_ADMIN_USER: "${PANEL_ADMIN_USER:-admin}"
       PANEL_ADMIN_PASSWORD: "${PANEL_ADMIN_PASSWORD:-admin123}"
       PANEL_SECRET: "${PANEL_SECRET:-change-me}"
+      PANEL_PROXY_USERNAME: "${PANEL_PROXY_USERNAME:-proxy}"
+      PANEL_PROXY_PASSWORD: "${PANEL_PROXY_PASSWORD:-}"
       PANEL_DATA_PATH: "/data/state.json"
     volumes:
       - ./data:/data

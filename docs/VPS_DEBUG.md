@@ -18,6 +18,8 @@ cp .env.example .env
 PANEL_BASE_URL=http://你的管理端公网IP:3000
 PANEL_ADMIN_PASSWORD=一个强密码
 PANEL_SECRET=一段随机字符串
+PANEL_PROXY_USERNAME=proxy
+PANEL_PROXY_PASSWORD=一个代理入口密码
 ```
 
 启动：
@@ -112,17 +114,21 @@ gost 3.x active
 3. 进入“代理池”，选择分组并配置 HTTP/SOCKS5 入口端口。
 4. 如果节点还没 ready，稍后点击“重启入口”。
 
+代理入口账号密码在“设置”页，不是面板登录账号密码。保存设置后，面板会自动给节点下发同步任务，并重启已启用的代理池入口。
+
 测试 HTTP 入口：
 
 ```bash
-curl -x http://用户名:密码@管理端IP:HTTP入口端口 https://api.ipify.org
+curl -x http://管理端IP:HTTP入口端口 -U '用户名:密码' https://api.ipify.org
 ```
 
 测试 SOCKS5 入口：
 
 ```bash
-curl --socks5 用户名:密码@管理端IP:SOCKS5入口端口 https://api.ipify.org
+curl -x socks5h://管理端IP:SOCKS5入口端口 -U '用户名:密码' https://api.ipify.org
 ```
+
+代理池页面会按照当前设置直接生成这两条命令，可以优先复制页面里的命令测试。
 
 ### GOST 显示 not installed
 
