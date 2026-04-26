@@ -35,7 +35,7 @@ function formatBytes(value: number) {
 }
 
 export default function Nodes() {
-  const { state, refreshState } = useAppContext();
+  const { state, refreshState, notify } = useAppContext();
   const [search, setSearch] = useState('');
   const [confirmDeleteNode, setConfirmDeleteNode] = useState<Node | null>(null);
   const [confirmUninstall, setConfirmUninstall] = useState<Node | null>(null);
@@ -53,13 +53,16 @@ export default function Nodes() {
       .some((value) => (value || '').toLowerCase().includes(keyword));
   });
 
-  const handleAction = async (action: () => Promise<unknown>) => {
+  const handleAction = async (action: () => Promise<unknown>, successTitle?: string, successMessage?: string) => {
     try {
       await action();
       await refreshState();
+      if (successTitle) {
+        notify({ type: 'success', title: successTitle, message: successMessage });
+      }
     } catch (error: any) {
       console.error(error);
-      alert(error.response?.data?.error || '操作失败');
+      notify({ type: 'error', title: '操作失败', message: error.response?.data?.error || '请稍后重试。' });
     }
   };
 
@@ -68,12 +71,16 @@ export default function Nodes() {
       .filter((node) => node.gostStatus !== 'agent uninstalled' && node.agentVersion !== state.versions.agent)
       .map((node) => node.id);
     if (outdated.length === 0) {
-      alert('没有需要升级的节点');
+      notify({ type: 'info', title: '没有需要升级的节点', message: `当前内置 Agent 版本为 ${state.versions.agent}。` });
       return;
     }
     setBatchUpgrading(true);
     try {
-      await handleAction(() => api.post('/nodes/tasks', { type: 'upgrade_agent', nodeIds: outdated }));
+      await handleAction(
+        () => api.post('/nodes/tasks', { type: 'upgrade_agent', nodeIds: outdated }),
+        '升级任务已下发',
+        `${outdated.length} 个节点会在下次 Agent 轮询时开始升级。`
+      );
     } finally {
       setBatchUpgrading(false);
     }
@@ -81,7 +88,10 @@ export default function Nodes() {
 
   const handleAssignGroups = async () => {
     if (!editingGroupsNode) return;
-    await handleAction(() => api.post(`/nodes/${editingGroupsNode.id}/groups`, { groupIds: selectedGroups }));
+    await handleAction(
+      () => api.post(`/nodes/${editingGroupsNode.id}/groups`, { groupIds: selectedGroups }),
+      '节点分组已保存'
+    );
     setEditingGroupsNode(null);
   };
 
@@ -98,20 +108,28 @@ export default function Nodes() {
 
   const handleSyncNode = async () => {
     if (!syncForm) return;
-    await handleAction(() => api.post(`/nodes/${syncForm.node.id}/tasks`, {
-      type: 'sync_node_proxy',
-      httpPort: syncForm.httpPort,
-      socksPort: syncForm.socksPort,
-      gostVersion: syncForm.gostVersion,
-      egressMode: syncForm.egressMode,
-      egressInterface: syncForm.egressInterface,
-    }));
+    await handleAction(
+      () => api.post(`/nodes/${syncForm.node.id}/tasks`, {
+        type: 'sync_node_proxy',
+        httpPort: syncForm.httpPort,
+        socksPort: syncForm.socksPort,
+        gostVersion: syncForm.gostVersion,
+        egressMode: syncForm.egressMode,
+        egressInterface: syncForm.egressInterface,
+      }),
+      '同步任务已下发',
+      `${syncForm.node.name} 会在下次 Agent 轮询时应用代理配置。`
+    );
     setSyncForm(null);
   };
 
   const groupNames = (node: Node) => state.groups
     .filter((group) => node.groupIds?.includes(group.id))
     .map((group) => group.name);
+
+  const syncableNodeIds = state.nodes
+    .filter((node) => node.gostStatus !== 'agent uninstalled')
+    .map((node) => node.id);
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="space-y-6">
@@ -125,11 +143,30 @@ export default function Nodes() {
             <RefreshCw className="mr-2 h-4 w-4" />
             批量升级 Agent
           </Button>
-          <Button variant="outline" onClick={() => handleAction(() => api.post('/nodes/cleanup-uninstalled'))}>
+          <Button
+            variant="outline"
+            onClick={() => handleAction(
+              () => api.post('/nodes/cleanup-uninstalled'),
+              '清理完成',
+              '已卸载节点及其关联任务记录已从面板移除。'
+            )}
+          >
             <Trash2 className="mr-2 h-4 w-4" />
             清理已卸载
           </Button>
-          <Button onClick={() => handleAction(() => api.post('/nodes/tasks', { type: 'sync_node_proxy', nodeIds: state.nodes.map((node) => node.id) }))}>
+          <Button
+            onClick={() => {
+              if (syncableNodeIds.length === 0) {
+                notify({ type: 'info', title: '没有可同步的节点' });
+                return;
+              }
+              void handleAction(
+                () => api.post('/nodes/tasks', { type: 'sync_node_proxy', nodeIds: syncableNodeIds }),
+                '同步任务已下发',
+                `${syncableNodeIds.length} 个节点会在下次 Agent 轮询时应用代理配置。`
+              );
+            }}
+          >
             <Wrench className="mr-2 h-4 w-4" />
             全量同步代理
           </Button>
@@ -208,7 +245,15 @@ export default function Nodes() {
                       <SlidersHorizontal className="mr-1 h-4 w-4" />
                       同步代理
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => handleAction(() => api.post('/nodes/tasks', { type: 'restart_gost', nodeIds: [node.id] }))}>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleAction(
+                        () => api.post('/nodes/tasks', { type: 'restart_gost', nodeIds: [node.id] }),
+                        '重启任务已下发',
+                        `${node.name} 会在下次 Agent 轮询时重启 GOST。`
+                      )}
+                    >
                       <RotateCw className="mr-1 h-4 w-4" />
                       重启
                     </Button>
@@ -239,7 +284,10 @@ export default function Nodes() {
         onClose={() => setConfirmDeleteNode(null)}
         title="确认删除节点记录？"
         description={`这只会删除面板中的 ${confirmDeleteNode?.name} 记录和关联任务，不会操作 VPS。`}
-        onConfirm={() => handleAction(() => api.delete(`/nodes/${confirmDeleteNode?.id}`))}
+        onConfirm={() => handleAction(
+          () => api.delete(`/nodes/${confirmDeleteNode?.id}`),
+          '节点记录已删除'
+        )}
       />
 
       <ConfirmDialog
@@ -248,7 +296,11 @@ export default function Nodes() {
         title="确认远程卸载 Agent？"
         description={`将向 ${confirmUninstall?.name} 下发卸载任务。成功后节点会离线，并可在面板中清理记录。`}
         confirmText="下发卸载"
-        onConfirm={() => handleAction(() => api.post('/nodes/tasks', { type: 'uninstall_agent', nodeIds: [confirmUninstall?.id] }))}
+        onConfirm={() => handleAction(
+          () => api.post('/nodes/tasks', { type: 'uninstall_agent', nodeIds: [confirmUninstall?.id] }),
+          '卸载任务已下发',
+          `${confirmUninstall?.name} 会在下次 Agent 轮询时执行卸载。`
+        )}
       />
 
       <Modal

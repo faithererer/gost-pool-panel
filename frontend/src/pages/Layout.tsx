@@ -16,9 +16,10 @@ import { Button } from '../components/ui/button';
 import { api } from '../api';
 import { useAppContext } from '../api/AppContext';
 import { motion, AnimatePresence } from 'framer-motion';
+import { ToastViewport } from '../components/ui/toast';
 
 export default function Layout() {
-  const { state } = useAppContext();
+  const { state, notices, dismissNotice } = useAppContext();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
@@ -43,6 +44,7 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen w-full bg-background dark text-foreground overflow-hidden">
+      <ToastViewport notices={notices} onDismiss={dismissNotice} />
       {/* Sidebar */}
       <AnimatePresence initial={false}>
         {sidebarOpen && (

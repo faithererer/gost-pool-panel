@@ -92,6 +92,10 @@ type settingsRequest struct {
 	ProxyPassword string `json:"proxyPassword"`
 }
 
+type taskCleanupRequest struct {
+	Statuses []string `json:"statuses"`
+}
+
 func (s *Server) requireAdminAPIFunc(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !s.validSession(r) {
@@ -180,6 +184,14 @@ func (s *Server) handleAdminAPI(w http.ResponseWriter, r *http.Request) {
 	case "register-tokens":
 		if r.Method == http.MethodPost && len(parts) == 1 {
 			s.handleAdminCreateRegisterToken(w, r)
+			return
+		}
+		if r.Method == http.MethodDelete && len(parts) == 2 {
+			if err := s.store.DeleteRegisterToken(parts[1]); err != nil {
+				writeError(w, http.StatusBadRequest, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 			return
 		}
 	case "nodes":
@@ -439,6 +451,19 @@ func (s *Server) handleAdminTasksAPI(w http.ResponseWriter, r *http.Request, par
 		writeJSON(w, http.StatusOK, s.store.Snapshot().Tasks)
 		return true
 	}
+	if r.Method == http.MethodPost && len(parts) == 2 && parts[1] == "cleanup" {
+		var req taskCleanupRequest
+		if !decodeJSON(w, r, &req) {
+			return true
+		}
+		count, err := s.store.DeleteTasksByStatus(req.Statuses)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"ok": true, "count": count})
+		return true
+	}
 	if r.Method == http.MethodPost && len(parts) == 3 && parts[2] == "retry" {
 		task, err := s.store.RetryTask(parts[1])
 		if err != nil {
@@ -446,6 +471,14 @@ func (s *Server) handleAdminTasksAPI(w http.ResponseWriter, r *http.Request, par
 			return true
 		}
 		writeJSON(w, http.StatusCreated, task)
+		return true
+	}
+	if r.Method == http.MethodDelete && len(parts) == 2 {
+		if err := s.store.DeleteTask(parts[1]); err != nil {
+			writeError(w, http.StatusBadRequest, err)
+			return true
+		}
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 		return true
 	}
 	return false

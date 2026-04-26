@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { CheckCircle2, Clock, Filter, ListTodo, PlayCircle, XCircle } from 'lucide-react';
+import { CheckCircle2, Clock, Filter, ListTodo, PlayCircle, Trash2, XCircle } from 'lucide-react';
 import { api } from '../api';
 import { useAppContext } from '../api/AppContext';
 import { Task, TaskStatus } from '../api/types';
 import { Button } from '../components/ui/button';
+import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { Input } from '../components/ui/input';
 import { Modal } from '../components/ui/modal';
 
@@ -61,10 +62,12 @@ function formatPayload(payload: string) {
 }
 
 export default function Tasks() {
-  const { state, refreshState } = useAppContext();
+  const { state, refreshState, notify } = useAppContext();
   const [filter, setFilter] = useState<'all' | TaskStatus>('all');
   const [search, setSearch] = useState('');
   const [viewingTask, setViewingTask] = useState<Task | null>(null);
+  const [deletingTask, setDeletingTask] = useState<Task | null>(null);
+  const [confirmCleanupDone, setConfirmCleanupDone] = useState(false);
 
   const nodeNames = useMemo(() => {
     const names = new Map<string, string>();
@@ -78,9 +81,37 @@ export default function Tasks() {
     try {
       await api.post(`/tasks/${taskId}/retry`);
       await refreshState();
+      notify({ type: 'success', title: '重试任务已创建', message: 'Agent 下次轮询会重新执行该任务。' });
     } catch (error: any) {
       console.error(error);
-      alert(error.response?.data?.error || '重试失败');
+      notify({ type: 'error', title: '重试失败', message: error.response?.data?.error || '请稍后重试。' });
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deletingTask) return;
+    try {
+      await api.delete(`/tasks/${deletingTask.id}`);
+      await refreshState();
+      notify({ type: 'success', title: '任务记录已删除' });
+    } catch (error: any) {
+      console.error(error);
+      notify({ type: 'error', title: '删除失败', message: error.response?.data?.error || '请稍后重试。' });
+    } finally {
+      setDeletingTask(null);
+    }
+  };
+
+  const handleCleanupDone = async () => {
+    try {
+      const response = await api.post('/tasks/cleanup', { statuses: ['success', 'failed'] });
+      await refreshState();
+      notify({ type: 'success', title: '任务清理完成', message: `已清理 ${response.data?.count || 0} 条成功/失败任务。` });
+    } catch (error: any) {
+      console.error(error);
+      notify({ type: 'error', title: '清理失败', message: error.response?.data?.error || '请稍后重试。' });
+    } finally {
+      setConfirmCleanupDone(false);
     }
   };
 
@@ -97,21 +128,27 @@ export default function Tasks() {
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">任务管理</h1>
-          <p className="mt-1 text-sm text-muted-foreground">查看节点远程任务的排队、执行、失败和重试状态。</p>
+          <p className="mt-1 text-sm text-muted-foreground">查看节点远程任务的排队、执行、失败和重试状态。任务本身是执行记录，不提供编辑。</p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {filters.map((item) => (
-            <Button
-              key={item.value}
-              variant={filter === item.value ? 'default' : 'outline'}
-              size="sm"
-              className={filter === 'failed' && item.value === 'failed' ? 'bg-destructive hover:bg-destructive/90' : ''}
-              onClick={() => setFilter(item.value)}
-            >
-              {item.label}
-            </Button>
-          ))}
+        <div className="flex flex-col gap-2 sm:items-end">
+          <Button variant="outline" size="sm" onClick={() => setConfirmCleanupDone(true)}>
+            <Trash2 className="mr-2 h-4 w-4" />
+            清理已结束任务
+          </Button>
+          <div className="flex flex-wrap gap-2">
+            {filters.map((item) => (
+              <Button
+                key={item.value}
+                variant={filter === item.value ? 'default' : 'outline'}
+                size="sm"
+                className={filter === 'failed' && item.value === 'failed' ? 'bg-destructive hover:bg-destructive/90' : ''}
+                onClick={() => setFilter(item.value)}
+              >
+                {item.label}
+              </Button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -159,6 +196,9 @@ export default function Tasks() {
                         <Button variant="outline" size="sm" onClick={() => handleRetry(task.id)}>重试</Button>
                       )}
                       <Button variant="ghost" size="sm" onClick={() => setViewingTask(task)}>查看详情</Button>
+                      <Button variant="ghost" size="sm" className="text-destructive hover:bg-destructive/10 hover:text-destructive" onClick={() => setDeletingTask(task)}>
+                        删除
+                      </Button>
                     </div>
                   </td>
                 </tr>
@@ -224,6 +264,24 @@ export default function Tasks() {
           </div>
         )}
       </Modal>
+
+      <ConfirmDialog
+        isOpen={!!deletingTask}
+        onClose={() => setDeletingTask(null)}
+        title="确认删除任务记录？"
+        description={`将删除任务 ${deletingTask?.type || ''} 的记录。若删除 pending/running 任务，Agent 可能不会再看到该任务。`}
+        confirmText="删除"
+        onConfirm={handleDelete}
+      />
+
+      <ConfirmDialog
+        isOpen={confirmCleanupDone}
+        onClose={() => setConfirmCleanupDone(false)}
+        title="确认清理已结束任务？"
+        description="将删除所有 success 和 failed 任务记录，pending/running 任务会保留。"
+        confirmText="清理"
+        onConfirm={handleCleanupDone}
+      />
     </motion.div>
   );
 }

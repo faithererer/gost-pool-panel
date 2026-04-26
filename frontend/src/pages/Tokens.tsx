@@ -2,25 +2,34 @@ import { useState } from 'react';
 import { useAppContext } from '../api/AppContext';
 import { Card, CardContent } from '../components/ui/card';
 import { Button } from '../components/ui/button';
-import { KeyRound, Copy, Check, Clock, Info } from 'lucide-react';
+import { KeyRound, Copy, Check, Clock, Info, Trash2 } from 'lucide-react';
 import { Input } from '../components/ui/input';
 import { motion } from 'framer-motion';
 import { api } from '../api';
 import { Modal } from '../components/ui/modal';
+import { ConfirmDialog } from '../components/ui/confirm-dialog';
+import { RegisterToken } from '../api/types';
+import { copyText } from '../lib/clipboard';
 
 export default function Tokens() {
-  const { state, refreshState } = useAppContext();
+  const { state, refreshState, notify } = useAppContext();
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [newTokenName, setNewTokenName] = useState('');
   const [newTokenTtl, setNewTokenTtl] = useState(24);
+  const [deletingToken, setDeletingToken] = useState<RegisterToken | null>(null);
 
   if (!state) return null;
 
-  const handleCopy = (command: string, id: string) => {
-    navigator.clipboard.writeText(command);
-    setCopiedToken(id);
-    setTimeout(() => setCopiedToken(null), 2000);
+  const handleCopy = async (command: string, id: string) => {
+    const ok = await copyText(command);
+    if (ok) {
+      setCopiedToken(id);
+      setTimeout(() => setCopiedToken(null), 2000);
+      notify({ type: 'success', title: '安装命令已复制' });
+      return;
+    }
+    notify({ type: 'error', title: '复制失败', message: '浏览器限制了剪贴板访问，请手动选中命令复制。' });
   };
 
   const handleCreate = async () => {
@@ -30,9 +39,24 @@ export default function Tokens() {
       setIsCreating(false);
       setNewTokenName('');
       setNewTokenTtl(24);
-    } catch (e) {
-      console.error(e);
-      alert("创建失败");
+      notify({ type: 'success', title: '令牌已生成', message: '复制一键安装命令到 Linux VPS 执行即可接入。' });
+    } catch (error: any) {
+      console.error(error);
+      notify({ type: 'error', title: '创建失败', message: error.response?.data?.error || '请稍后重试。' });
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deletingToken) return;
+    try {
+      await api.delete(`/register-tokens/${encodeURIComponent(deletingToken.token)}`);
+      await refreshState();
+      notify({ type: 'success', title: '令牌记录已删除' });
+    } catch (error: any) {
+      console.error(error);
+      notify({ type: 'error', title: '删除失败', message: error.response?.data?.error || '请稍后重试。' });
+    } finally {
+      setDeletingToken(null);
     }
   };
 
@@ -87,8 +111,18 @@ export default function Tokens() {
                       variant="outline"
                       size="icon"
                       onClick={() => handleCopy(token.installCommand, token.token)}
+                      title="复制安装命令"
                     >
                       {copiedToken === token.token ? <Check className="h-4 w-4 text-green-500" /> : <Copy className="h-4 w-4" />}
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      onClick={() => setDeletingToken(token)}
+                      title="删除令牌记录"
+                    >
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </CardContent>
@@ -137,6 +171,15 @@ export default function Tokens() {
           </div>
         </div>
       </Modal>
+
+      <ConfirmDialog
+        isOpen={!!deletingToken}
+        onClose={() => setDeletingToken(null)}
+        title="确认删除令牌记录？"
+        description={`将删除 ${deletingToken?.name || deletingToken?.token} 的接入令牌记录。已接入节点不会受影响。`}
+        confirmText="删除"
+        onConfirm={handleDelete}
+      />
 
     </motion.div>
   );

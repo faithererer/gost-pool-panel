@@ -106,3 +106,44 @@ func TestCreateTasksAndRetryTask(t *testing.T) {
 		t.Fatalf("retry task = %#v", retry)
 	}
 }
+
+func TestDeleteRegisterTokenAndTasks(t *testing.T) {
+	st := newTestStore(t)
+	token, err := st.CreateRegisterToken("node-a", time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DeleteRegisterToken(token.Token); err != nil {
+		t.Fatal(err)
+	}
+	if got := st.Snapshot().RegisterTokens; len(got) != 0 {
+		t.Fatalf("tokens = %#v, want empty", got)
+	}
+
+	node := registerTestNode(t, st, "node-b")
+	task, err := st.CreateTask(node.ID, "restart_gost", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.DeleteTask(task.ID); err != nil {
+		t.Fatal(err)
+	}
+	if got := st.Snapshot().Tasks; len(got) != 0 {
+		t.Fatalf("tasks = %#v, want empty", got)
+	}
+
+	task, err = st.CreateTask(node.ID, "restart_gost", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.FinishTask(node.ID, task.ID, model.TaskStatusSuccess, "ok", ""); err != nil {
+		t.Fatal(err)
+	}
+	count, err := st.DeleteTasksByStatus([]string{model.TaskStatusSuccess})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("deleted tasks = %d, want 1", count)
+	}
+}

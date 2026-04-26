@@ -235,6 +235,18 @@ Response:
 
 Prefer using `registerTokens[].installCommand` from `/state` after token creation.
 
+### Delete Register Token
+
+`DELETE /api/admin/register-tokens/{token}`
+
+Deletes the token record from the panel. It does not affect nodes that have already registered.
+
+Response:
+
+```json
+{ "ok": true }
+```
+
 ## Nodes
 
 ### List Nodes
@@ -355,6 +367,34 @@ Response: created `Task`.
 `GET /api/admin/tasks`
 
 Response: `Task[]`.
+
+### Delete Task Record
+
+`DELETE /api/admin/tasks/{taskId}`
+
+Deletes a task record. If you delete a `pending` task before the agent polls it, the agent will not execute it.
+
+Response:
+
+```json
+{ "ok": true }
+```
+
+### Cleanup Tasks By Status
+
+`POST /api/admin/tasks/cleanup`
+
+Request:
+
+```json
+{ "statuses": ["success", "failed"] }
+```
+
+Response:
+
+```json
+{ "ok": true, "count": 12 }
+```
 
 ## Groups
 

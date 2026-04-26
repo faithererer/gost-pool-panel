@@ -9,7 +9,7 @@ import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { Input } from '../components/ui/input';
 
 export default function Settings() {
-  const { state, refreshState } = useAppContext();
+  const { state, refreshState, notify } = useAppContext();
   const [proxyUsername, setProxyUsername] = useState('');
   const [proxyPassword, setProxyPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -31,10 +31,10 @@ export default function Settings() {
     try {
       await api.patch('/settings', { proxyUsername, proxyPassword });
       await refreshState();
-      alert('设置已保存，节点同步任务已创建。');
+      notify({ type: 'success', title: '设置已保存', message: '节点同步任务已创建，Agent 下次轮询会应用新认证。' });
     } catch (error: any) {
       console.error(error);
-      alert(error.response?.data?.error || '保存失败');
+      notify({ type: 'error', title: '保存失败', message: error.response?.data?.error || '请稍后重试。' });
     } finally {
       setIsSaving(false);
       setConfirmSave(false);
@@ -45,10 +45,10 @@ export default function Settings() {
     try {
       const response = await api.post('/nodes/cleanup-uninstalled');
       await refreshState();
-      alert(`已清理 ${response.data?.count || 0} 个已卸载节点。`);
+      notify({ type: 'success', title: '清理完成', message: `已清理 ${response.data?.count || 0} 个已卸载节点。` });
     } catch (error: any) {
       console.error(error);
-      alert(error.response?.data?.error || '清理失败');
+      notify({ type: 'error', title: '清理失败', message: error.response?.data?.error || '请稍后重试。' });
     } finally {
       setConfirmCleanup(false);
     }

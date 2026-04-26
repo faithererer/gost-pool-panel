@@ -8,9 +8,10 @@ import { motion } from 'framer-motion';
 import { api } from '../api';
 import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { Modal } from '../components/ui/modal';
+import { copyText } from '../lib/clipboard';
 
 export default function Pools() {
-  const { state, refreshState } = useAppContext();
+  const { state, refreshState, notify } = useAppContext();
   const [isCreating, setIsCreating] = useState(false);
   const [editingPool, setEditingPool] = useState<any>(null);
   const [deletingPool, setDeletingPool] = useState<any>(null);
@@ -30,9 +31,10 @@ export default function Pools() {
       await refreshState();
       setIsCreating(false);
       resetForm();
-    } catch (e) {
-      console.error(e);
-      alert("创建失败");
+      notify({ type: 'success', title: '代理池已创建', message: enabled ? '入口进程会自动尝试启动。' : '当前为禁用状态，需要启用后才会启动入口。' });
+    } catch (error: any) {
+      console.error(error);
+      notify({ type: 'error', title: '创建失败', message: error.response?.data?.error || '请检查端口、分组和代理认证配置。' });
     }
   };
 
@@ -43,9 +45,10 @@ export default function Pools() {
       await refreshState();
       setEditingPool(null);
       resetForm();
-    } catch (e) {
-      console.error(e);
-      alert("更新失败");
+      notify({ type: 'success', title: '代理池已更新', message: '如果代理池启用，入口进程已按新配置重启。' });
+    } catch (error: any) {
+      console.error(error);
+      notify({ type: 'error', title: '更新失败', message: error.response?.data?.error || '请检查端口是否被占用。' });
     }
   };
 
@@ -55,9 +58,10 @@ export default function Pools() {
       await api.delete(`/pools/${deletingPool.id}`);
       await refreshState();
       setDeletingPool(null);
-    } catch (e) {
-      console.error(e);
-      alert("删除失败");
+      notify({ type: 'success', title: '代理池已删除' });
+    } catch (error: any) {
+      console.error(error);
+      notify({ type: 'error', title: '删除失败', message: error.response?.data?.error || '请稍后重试。' });
     }
   };
 
@@ -65,9 +69,10 @@ export default function Pools() {
     try {
       await api.post(`/pools/${id}/restart`);
       await refreshState();
-    } catch (e) {
-      console.error(e);
-      alert("重启失败");
+      notify({ type: 'success', title: '代理池重启已触发' });
+    } catch (error: any) {
+      console.error(error);
+      notify({ type: 'error', title: '重启失败', message: error.response?.data?.error || '请检查面板容器内 gost 是否存在。' });
     }
   };
 
@@ -90,12 +95,15 @@ export default function Pools() {
     setEnabled(pool.enabled);
   };
 
-  const copyTestCommand = (port: number, protocol: string) => {
+  const copyTestCommand = async (port: number, protocol: string) => {
     const host = window.location.hostname;
     const auth = state.settings?.proxyUsername ? `-U '${state.settings.proxyUsername}:${state.settings.proxyPassword || 'PASSWORD'}' ` : '';
     const ip = host.includes(':') ? `[${host}]` : host;
-    navigator.clipboard.writeText(`curl -x ${protocol}://${ip}:${port} ${auth}https://api64.ipify.org`);
-    alert(`已复制 ${protocol.toUpperCase()} 测试命令`);
+    const command = `curl -x ${protocol}://${ip}:${port} ${auth}https://api64.ipify.org`;
+    const ok = await copyText(command);
+    notify(ok
+      ? { type: 'success', title: `${protocol.toUpperCase()} 测试命令已复制`, message: '可直接在终端粘贴执行。' }
+      : { type: 'error', title: '复制失败', message: '浏览器限制了剪贴板访问，请手动复制测试命令。' });
   };
 
   return (

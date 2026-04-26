@@ -10,7 +10,7 @@ import { ConfirmDialog } from '../components/ui/confirm-dialog';
 import { Modal } from '../components/ui/modal';
 
 export default function Groups() {
-  const { state, refreshState } = useAppContext();
+  const { state, refreshState, notify } = useAppContext();
   const [isCreating, setIsCreating] = useState(false);
   const [editingGroup, setEditingGroup] = useState<any>(null);
   const [deletingGroup, setDeletingGroup] = useState<any>(null);
@@ -27,9 +27,10 @@ export default function Groups() {
       setIsCreating(false);
       setName('');
       setRemark('');
-    } catch (e) {
-      console.error(e);
-      alert("创建失败");
+      notify({ type: 'success', title: '分组已创建' });
+    } catch (error: any) {
+      console.error(error);
+      notify({ type: 'error', title: '创建失败', message: error.response?.data?.error || '请填写有效的分组名称。' });
     }
   };
 
@@ -39,9 +40,10 @@ export default function Groups() {
       await api.patch(`/groups/${editingGroup.id}`, { name, remark });
       await refreshState();
       setEditingGroup(null);
-    } catch (e) {
-      console.error(e);
-      alert("更新失败");
+      notify({ type: 'success', title: '分组已更新' });
+    } catch (error: any) {
+      console.error(error);
+      notify({ type: 'error', title: '更新失败', message: error.response?.data?.error || '请稍后重试。' });
     }
   };
 
@@ -50,9 +52,10 @@ export default function Groups() {
     try {
       await api.delete(`/groups/${deletingGroup.id}`);
       await refreshState();
-    } catch (e) {
-      console.error(e);
-      alert("删除失败");
+      notify({ type: 'success', title: '分组已删除', message: '相关节点和代理池中的引用也已移除。' });
+    } catch (error: any) {
+      console.error(error);
+      notify({ type: 'error', title: '删除失败', message: error.response?.data?.error || '请稍后重试。' });
     }
   };
 

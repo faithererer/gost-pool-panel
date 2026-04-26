@@ -165,6 +165,25 @@ func (s *Store) CreateRegisterToken(name string, ttl time.Duration) (model.Regis
 	return t, s.saveLocked()
 }
 
+func (s *Store) DeleteRegisterToken(token string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	found := false
+	tokens := s.state.RegisterTokens[:0]
+	for _, t := range s.state.RegisterTokens {
+		if t.Token == token {
+			found = true
+			continue
+		}
+		tokens = append(tokens, t)
+	}
+	if !found {
+		return errors.New("register token not found")
+	}
+	s.state.RegisterTokens = tokens
+	return s.saveLocked()
+}
+
 func (s *Store) CheckRegisterToken(token string) (int, string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -649,6 +668,53 @@ func (s *Store) RetryTask(taskID string) (model.Task, error) {
 	}
 	s.state.Tasks = append([]model.Task{t}, s.state.Tasks...)
 	return t, s.saveLocked()
+}
+
+func (s *Store) DeleteTask(taskID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	found := false
+	tasks := s.state.Tasks[:0]
+	for _, t := range s.state.Tasks {
+		if t.ID == taskID {
+			found = true
+			continue
+		}
+		tasks = append(tasks, t)
+	}
+	if !found {
+		return errors.New("task not found")
+	}
+	s.state.Tasks = tasks
+	return s.saveLocked()
+}
+
+func (s *Store) DeleteTasksByStatus(statuses []string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	statusSet := map[string]bool{}
+	for _, status := range statuses {
+		if status != "" {
+			statusSet[status] = true
+		}
+	}
+	if len(statusSet) == 0 {
+		return 0, errors.New("statuses are required")
+	}
+	removed := 0
+	tasks := s.state.Tasks[:0]
+	for _, t := range s.state.Tasks {
+		if statusSet[t.Status] {
+			removed++
+			continue
+		}
+		tasks = append(tasks, t)
+	}
+	if removed == 0 {
+		return 0, nil
+	}
+	s.state.Tasks = tasks
+	return removed, s.saveLocked()
 }
 
 func (s *Store) PendingTasks(nodeID string) ([]model.Task, error) {

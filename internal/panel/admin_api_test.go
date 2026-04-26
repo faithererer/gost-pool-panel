@@ -130,6 +130,11 @@ func TestAdminCreateTokenIncludesInstallCommand(t *testing.T) {
 	if token.Token == "" || token.InstallCommand == "" {
 		t.Fatalf("token response = %#v", token)
 	}
+	var ok map[string]bool
+	code = doJSON(t, client, http.MethodDelete, ts.URL+"/api/admin/register-tokens/"+token.Token, "", &ok)
+	if code != http.StatusOK || !ok["ok"] {
+		t.Fatalf("delete token status = %d body=%#v", code, ok)
+	}
 }
 
 func TestAdminBatchTaskAndRetry(t *testing.T) {
@@ -156,6 +161,19 @@ func TestAdminBatchTaskAndRetry(t *testing.T) {
 	}
 	if retry.Type != "upgrade_agent" || retry.NodeID != tasks[0].NodeID {
 		t.Fatalf("retry = %#v", retry)
+	}
+	var ok map[string]bool
+	code = doJSON(t, client, http.MethodDelete, ts.URL+"/api/admin/tasks/"+tasks[1].ID, "", &ok)
+	if code != http.StatusOK || !ok["ok"] {
+		t.Fatalf("delete task status = %d body=%#v", code, ok)
+	}
+	if err := st.FinishTask(tasks[0].NodeID, tasks[0].ID, model.TaskStatusSuccess, "ok", ""); err != nil {
+		t.Fatal(err)
+	}
+	var cleanup map[string]any
+	code = doJSON(t, client, http.MethodPost, ts.URL+"/api/admin/tasks/cleanup", `{"statuses":["success"]}`, &cleanup)
+	if code != http.StatusOK || cleanup["ok"] != true || cleanup["count"].(float64) != 1 {
+		t.Fatalf("cleanup status = %d body=%#v", code, cleanup)
 	}
 }
 
