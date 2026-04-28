@@ -449,7 +449,7 @@ export default function Nodes() {
               >
                 <option value="auto">自动</option>
                 <option value="ipv4">强制 IPv4</option>
-                <option value="prefer_ipv6">IPv6 优先（兼容 IPv4-only 目标）</option>
+                <option value="prefer_ipv6">IPv6 优先（探测失败走 IPv4）</option>
                 <option value="ipv6">强制 IPv6</option>
                 <option value="custom">自定义接口或本机 IP</option>
               </select>

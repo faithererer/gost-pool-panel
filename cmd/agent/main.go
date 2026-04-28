@@ -345,7 +345,7 @@ func (a *Agent) syncNodeProxy(payload string) (string, string, string) {
 	if err != nil {
 		return model.TaskStatusFailed, "", err.Error()
 	}
-	resolverOnly := resolverOnlyForEgress(p.EgressMode, egressInterface)
+	resolverOnly, resolverNote := resolverForSync(p.EgressMode, egressInterface)
 	cfg := gostcfg.NodeProxy(p.HTTPPort, p.SocksPort, p.Username, p.Password, egressInterface, resolverOnly)
 	b, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
@@ -371,6 +371,9 @@ func (a *Agent) syncNodeProxy(payload string) (string, string, string) {
 	}
 	if resolverOnly == "" {
 		resolverOnly = "auto"
+	}
+	if resolverNote != "" {
+		resolverOnly += " (" + resolverNote + ")"
 	}
 	return model.TaskStatusSuccess, fmt.Sprintf("GOST proxy synced: http=%d socks5=%d version=%s egress=%s resolver=%s", p.HTTPPort, p.SocksPort, p.GostVersion, egressInterface, resolverOnly), ""
 }
@@ -427,6 +430,37 @@ func resolverOnlyForEgress(mode, egressInterface string) string {
 		}
 	}
 	return ""
+}
+
+func resolverForSync(mode, egressInterface string) (string, string) {
+	resolverOnly := resolverOnlyForEgress(mode, egressInterface)
+	if strings.ToLower(strings.TrimSpace(mode)) != "prefer_ipv6" {
+		return resolverOnly, ""
+	}
+	if err := probeIPv6EgressFunc(); err != nil {
+		return "ipv4", "prefer_ipv6 degraded: " + err.Error()
+	}
+	return resolverOnly, ""
+}
+
+var probeIPv6EgressFunc = probeIPv6Egress
+
+var ipv6ProbeTargets = []string{
+	"[2606:4700:4700::1111]:443",
+	"[2001:4860:4860::8888]:443",
+}
+
+func probeIPv6Egress() error {
+	var failures []string
+	for _, target := range ipv6ProbeTargets {
+		conn, err := net.DialTimeout("tcp6", target, 2*time.Second)
+		if err == nil {
+			_ = conn.Close()
+			return nil
+		}
+		failures = append(failures, target+": "+err.Error())
+	}
+	return fmt.Errorf("IPv6 probe failed: %s", strings.Join(failures, "; "))
 }
 
 func localRouteSourceIP(family string) (string, error) {
