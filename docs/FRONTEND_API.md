@@ -205,7 +205,7 @@ Returns `State`. This is the preferred first request after login.
 Response:
 
 ```json
-{ "panel": "0.3.7", "agent": "0.3.7" }
+{ "panel": "0.3.8", "agent": "0.3.8" }
 ```
 
 Use this to mark nodes whose `agentVersion !== versions.agent` as upgrade candidates.
@@ -333,7 +333,7 @@ Rules:
 - `sync_node_proxy` and `update_ports` generate the GOST payload server-side using global proxy credentials.
 - `update_ports` is normalized to a `sync_node_proxy` task.
 - `egressMode` supports `auto`, `ipv4`, `prefer_ipv6`, `ipv6`, `custom`.
-- Use `prefer_ipv6` for application compatibility: dual-stack targets prefer AAAA/IPv6, while IPv4-only targets can still fall back through system IPv4.
+- Use `prefer_ipv6` for application compatibility: the node first tries an IPv6-only local egress path, then retries through IPv4-only egress if the IPv6 connect fails. IPv4-only targets also work through the IPv4 path.
 - `custom` requires `egressInterface`, such as `eth0` or `2600:...`.
 - `apply_config` requires raw GOST JSON in `payload`.
 
@@ -646,7 +646,7 @@ Features:
 
 - Copy install command: use `navigator.clipboard.writeText`.
 - Upgrade outdated agents: call batch task API with nodes whose `agentVersion !== versions.agent`.
-- Sync IPv6-compatible node proxy: prefer `egressMode: "prefer_ipv6"` for apps that may call IPv4-only targets; use `egressMode: "ipv6"` only when strict AAAA-only IPv6 egress is desired.
+- Sync IPv6-compatible node proxy: prefer `egressMode: "prefer_ipv6"` for apps that may call IPv4-only targets or dual-stack targets while the node IPv6 route is unstable; use `egressMode: "ipv6"` only when strict AAAA-only IPv6 egress is desired.
 - Custom egress: require interface/IP input before submitting.
 - Delete node/group/pool and uninstall agent: always require confirmation.
 - Failed API response: show the `{error}` body exactly enough for troubleshooting.

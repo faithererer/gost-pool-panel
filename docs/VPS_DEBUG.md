@@ -37,7 +37,7 @@ docker compose --env-file .env up -d --build
 如果使用 GHCR 镜像，把 `docker-compose.yml` 里的 `build: .` 换成对应 tag 镜像，例如：
 
 ```yaml
-image: ghcr.io/faithererer/gost-pool-panel:v0.3.7
+image: ghcr.io/faithererer/gost-pool-panel:v0.3.8
 ```
 
 然后启动：
@@ -86,7 +86,7 @@ agent `0.3.4` 修复 GOST 自动安装时从 `/tmp` 移动到 `/usr/local/bin/go
 
 agent `0.3.5` 起会上报节点侧 GOST HTTP/SOCKS5 监听端口的入站/出站流量。统计依赖 Linux `iptables`/`ip6tables` 计数规则；如果面板一直显示 `0B`，先确认节点 agent 已升级到 `0.3.5` 或更新版本。
 
-agent `0.3.7` 起支持 `IPv6 优先` 出口模式。它会让 GOST DNS 优先返回 IPv6，但不会强制所有目标只走 IPv6，适合某些应用访问 IPv4-only 目标时避免 503。
+agent `0.3.8` 起支持新版 `IPv6 优先` 出口模式。它会先尝试 IPv6-only 出口，连接失败后自动重试 IPv4-only 出口，适合某些应用访问 IPv4-only 目标或节点 IPv6 出口不稳定时避免 503。
 
 确认管理端容器里是否已经是新版本：
 
@@ -137,7 +137,7 @@ journalctl -u gost-pool-agent -f
 
 - `自动`：使用系统路由。
 - `强制 IPv4`：agent 自动从 Linux 路由表选择 IPv4 源地址。
-- `IPv6 优先`：GOST 优先使用 AAAA/IPv6，但 IPv4-only 目标可以回退到系统 IPv4，适合接入兼容性一般的应用。
+- `IPv6 优先`：节点优先使用 IPv6-only 出口；如果目标有 AAAA 但本机 IPv6 出口异常导致连接失败，会自动重试 IPv4-only 出口。IPv4-only 目标也会走 IPv4。
 - `强制 IPv6`：agent 自动从 Linux 路由表选择 IPv6 源地址，并让 GOST 只使用 AAAA 解析结果，适合明确只走 IPv6 的目标；目标没有 AAAA 记录时会 503。
 - `自定义接口/IP`：手动填写网卡名或本机 IP，例如 `eth0`、`ens3`、`2600:...`。
 
@@ -199,7 +199,7 @@ curl -x "http://用户名:密码@管理端IP:HTTP入口端口" https://api64.ipi
 curl -x "http://用户名:密码@管理端IP:HTTP入口端口" https://api6.ipify.org
 ```
 
-“同步节点代理”任务成功结果里，强制 IPv6 会显示 `resolver=ipv6`，IPv6 优先会显示 `resolver=prefer_ipv6`。如果只看到 `egress=IPv6!`，说明节点端 agent 还不是包含 IPv6 resolver 修复的版本。
+“同步节点代理”任务成功结果里，强制 IPv6 会显示 `resolver=ipv6`，IPv6 优先会显示 `resolver=prefer_ipv6`。如果只看到 `egress=IPv6!`，说明节点端 agent 还不是包含 IPv6 resolver/fallback 修复的版本。
 
 ### GOST 显示 not installed
 
@@ -276,7 +276,7 @@ http://用户名:密码@IP:端口
 - 节点安全组没有放行节点侧代理端口，管理端连不上节点。
 - 强制 IPv6 出口访问了 IPv4-only 目标。
 
-如果“强制 IPv6”下 `curl https://api64.ipify.org` 正常，但某些应用报 503，优先把节点出口网络改成 `IPv6 优先`，然后重新下发“同步节点代理”。
+如果“强制 IPv6”下某些应用报 503，优先把节点出口网络改成 `IPv6 优先`，然后重新下发“同步节点代理”。新版 `IPv6 优先` 会在 IPv6 连接失败时重试 IPv4。
 
 ### 流量一直是 0B
 

@@ -41,22 +41,49 @@ func TestNodeProxyOmitsEmptyEgressInterface(t *testing.T) {
 
 func TestNodeProxyAddsPreferIPv6Resolver(t *testing.T) {
 	cfg := NodeProxy(18080, 18081, "proxy", "secret", "", "prefer_ipv6")
-	if len(cfg.Services) != 2 {
-		t.Fatalf("services = %d, want 2", len(cfg.Services))
+	if len(cfg.Services) != 4 {
+		t.Fatalf("services = %d, want 4", len(cfg.Services))
 	}
-	for _, svc := range cfg.Services {
-		if svc.Interface != "" {
-			t.Fatalf("service %s interface = %q, want empty", svc.Name, svc.Interface)
+	for _, svc := range cfg.Services[:2] {
+		if svc.Handler.Chain != "node-prefer-ipv6-fallback" {
+			t.Fatalf("service %s chain = %q, want node-prefer-ipv6-fallback", svc.Name, svc.Handler.Chain)
 		}
-		if svc.Resolver != "resolver-prefer-ipv6" {
-			t.Fatalf("service %s resolver = %q, want resolver-prefer-ipv6", svc.Name, svc.Resolver)
+		if svc.Handler.Retries != 1 {
+			t.Fatalf("service %s retries = %d, want 1", svc.Name, svc.Handler.Retries)
+		}
+		if svc.Interface != "" || svc.Resolver != "" {
+			t.Fatalf("service %s interface/resolver = %q/%q, want empty", svc.Name, svc.Interface, svc.Resolver)
 		}
 	}
-	if len(cfg.Resolvers) != 1 {
-		t.Fatalf("resolvers = %d, want 1", len(cfg.Resolvers))
+	if cfg.Services[2].Addr != "127.0.0.1:61080" || cfg.Services[2].Resolver != "resolver-ipv6" {
+		t.Fatalf("v6 egress service = %#v, want loopback resolver-ipv6", cfg.Services[2])
 	}
-	ns := cfg.Resolvers[0].Nameservers[0]
-	if ns.Prefer != "ipv6" || ns.Only != "" {
-		t.Fatalf("nameserver = %#v, want prefer ipv6 without only", ns)
+	if cfg.Services[3].Addr != "127.0.0.1:61081" || cfg.Services[3].Resolver != "resolver-ipv4" {
+		t.Fatalf("v4 egress service = %#v, want loopback resolver-ipv4", cfg.Services[3])
+	}
+	if len(cfg.Chains) != 1 {
+		t.Fatalf("chains = %d, want 1", len(cfg.Chains))
+	}
+	chain := cfg.Chains[0]
+	if chain.Name != "node-prefer-ipv6-fallback" || chain.Selector.Strategy != "fifo" || chain.Selector.MaxFails != 1 {
+		t.Fatalf("chain selector = %#v", chain)
+	}
+	if len(chain.Hops) != 1 || len(chain.Hops[0].Nodes) != 2 {
+		t.Fatalf("chain hops = %#v, want one hop with two nodes", chain.Hops)
+	}
+	if chain.Hops[0].Nodes[0].Addr != "127.0.0.1:61080" {
+		t.Fatalf("first fallback node addr = %q, want v6 loopback", chain.Hops[0].Nodes[0].Addr)
+	}
+	if chain.Hops[0].Nodes[1].Addr != "127.0.0.1:61081" {
+		t.Fatalf("second fallback node addr = %q, want v4 loopback", chain.Hops[0].Nodes[1].Addr)
+	}
+	if len(cfg.Resolvers) != 2 {
+		t.Fatalf("resolvers = %d, want 2", len(cfg.Resolvers))
+	}
+	if cfg.Resolvers[0].Name != "resolver-ipv6" || cfg.Resolvers[0].Nameservers[0].Only != "ipv6" {
+		t.Fatalf("first resolver = %#v, want resolver-ipv6", cfg.Resolvers[0])
+	}
+	if cfg.Resolvers[1].Name != "resolver-ipv4" || cfg.Resolvers[1].Nameservers[0].Only != "ipv4" {
+		t.Fatalf("second resolver = %#v, want resolver-ipv4", cfg.Resolvers[1])
 	}
 }

@@ -39,14 +39,14 @@ git push origin main
 示例：
 
 ```bash
-git tag v0.3.7
-git push origin v0.3.7
+git tag v0.3.8
+git push origin v0.3.8
 ```
 
 推送 tag 后，GitHub Actions 会构建并发布：
 
 ```text
-ghcr.io/faithererer/gost-pool-panel:v0.3.7
+ghcr.io/faithererer/gost-pool-panel:v0.3.8
 ```
 
 如果 fork 到其他账号，镜像名为：
@@ -76,7 +76,7 @@ build: .
 替换为：
 
 ```yaml
-image: ghcr.io/faithererer/gost-pool-panel:v0.3.7
+image: ghcr.io/faithererer/gost-pool-panel:v0.3.8
 ```
 
 然后启动：
